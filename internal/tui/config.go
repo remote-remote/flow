@@ -29,13 +29,20 @@ type configModel struct {
 }
 
 func ConfigWizard() error {
-	p := tea.NewProgram(configModel{state: stateVaultInput})
+	m := configModel{state: stateVaultInput}
+
+	// Pre-populate from existing config
+	if existing, err := config.Load(); err == nil {
+		m.input = existing.VaultPath
+	}
+
+	p := tea.NewProgram(m)
 	finalModel, err := p.Run()
 	if err != nil {
 		return err
 	}
-	m := finalModel.(configModel)
-	if !m.finished {
+	fm := finalModel.(configModel)
+	if !fm.finished {
 		return fmt.Errorf("configuration cancelled")
 	}
 	return nil
@@ -69,6 +76,9 @@ func (m configModel) View() tea.View {
 
 func (m configModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.PasteMsg:
+		m.input += msg.Content
+		return m, nil
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "ctrl+c":

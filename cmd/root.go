@@ -57,4 +57,5 @@ func Execute() {
 func init() {
 	rootCommand.AddCommand(noteCmd)
 	rootCommand.AddCommand(configCmd)
+	rootCommand.AddCommand(standupCmd)
 }

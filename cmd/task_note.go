@@ -30,31 +30,21 @@ var taskNote = &cobra.Command{
 			return err
 		}
 
-		var identifier string
+		var issue *linear.Issue
 
 		if len(args) == 1 {
-			identifier = args[0]
+			issue, err = tui.RunTaskPickerForIdentifier(args[0])
 		} else if id := identifierFromBranch(); id != "" {
-			identifier = id
+			issue, err = tui.RunTaskPickerForIdentifier(id)
 		} else {
-			issues, err := linear.AssignedIssues()
-			if err != nil {
-				return fmt.Errorf("failed to fetch issues: %w", err)
-			}
-			if len(issues) == 0 {
-				fmt.Println("No assigned issues found.")
-				return nil
-			}
-			picked := tui.PickIssue(issues)
-			if picked == nil {
-				return nil
-			}
-			identifier = picked.Identifier
+			issue, err = tui.RunTaskPicker()
 		}
 
-		issue, err := linear.IssueByIdentifier(identifier)
 		if err != nil {
-			return fmt.Errorf("failed to fetch issue: %w", err)
+			return err
+		}
+		if issue == nil {
+			return nil
 		}
 
 		return notes.OpenTask(cfg, issue)

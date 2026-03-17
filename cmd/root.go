@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/remote-remote/flow/internal/config"
+	"github.com/remote-remote/flow/internal/linear"
+	"github.com/remote-remote/flow/internal/notes"
 	tui "github.com/remote-remote/flow/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -18,7 +20,6 @@ var rootCommand = &cobra.Command{
 	Use:   "flow",
 	Short: "A devtool for keeping flow in a terminal.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// First-run: check if configured
 		cfg, err := config.Load()
 		if err != nil {
 			if errors.Is(err, config.ErrNotConfigured) {
@@ -27,14 +28,38 @@ var rootCommand = &cobra.Command{
 			}
 			return err
 		}
-		_ = cfg
 
 		t := ""
 		if len(args) > 0 {
 			t = args[0]
 		}
 
-		tuiSelection = tui.Menu(t)
+		dirty := gitWorktreeDirty()
+		result := tui.Menu(t, func(identifier string) tui.IssueStartedMsg {
+			return tui.StartIssueResult(identifier, dirty)
+		})
+
+		// Handle inline results that completed inside the TUI
+		switch result.Action {
+		case "work:done":
+			if result.WorkResult != nil {
+				if result.WorkResult.Dirty {
+					fmt.Println("Worktree is dirty — commit or stash to checkout the branch.")
+				}
+				return notes.OpenTask(cfg, result.WorkResult.Issue)
+			}
+		case "note:task:done":
+			if issue, ok := result.Issue.(*linear.Issue); ok {
+				return notes.OpenTask(cfg, issue)
+			}
+		case "standup":
+			tuiSelection = "standup"
+		case "config":
+			tuiSelection = "config"
+		case "note:daily":
+			tuiSelection = "note:daily"
+		}
+
 		return nil
 	},
 }

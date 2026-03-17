@@ -3,7 +3,6 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 
@@ -29,61 +28,34 @@ var workCmd = &cobra.Command{
 			return err
 		}
 
-		var identifier string
+		var issue *linear.Issue
+		var dirty bool
 
 		if len(args) == 1 {
-			identifier = args[0]
+			identifier := args[0]
+			dirty = gitWorktreeDirty()
+			result := tui.StartIssueResult(identifier, dirty)
+			if result.Err() != nil {
+				return result.Err()
+			}
+			issue = result.Issue()
 		} else {
-			// Pick a project
-			projects, err := linear.Projects()
+			d := gitWorktreeDirty()
+			result, err := tui.RunWorkFlow(func(identifier string) tui.IssueStartedMsg {
+				return tui.StartIssueResult(identifier, d)
+			})
 			if err != nil {
-				return fmt.Errorf("failed to fetch projects: %w", err)
+				return err
 			}
-			if len(projects) == 0 {
-				fmt.Println("No projects found.")
+			if result == nil {
 				return nil
 			}
-
-			project := tui.PickProject(projects)
-			if project == nil {
-				return nil
-			}
-
-			// Pick an issue from that project
-			issues, err := linear.ProjectIssues(project.Name)
-			if err != nil {
-				return fmt.Errorf("failed to fetch issues: %w", err)
-			}
-			if len(issues) == 0 {
-				fmt.Println("No issues in this project.")
-				return nil
-			}
-
-			picked := tui.PickIssue(issues)
-			if picked == nil {
-				return nil
-			}
-			identifier = picked.Identifier
+			issue = result.Issue
+			dirty = result.Dirty
 		}
 
-		// Start the issue (self-assign + In Progress + checkout branch)
-		fmt.Printf("Starting %s...\n", identifier)
-		if gitWorktreeDirty() {
-			// Start without checkout, warn about dirty worktree
-			if err := linear.StartIssue(identifier); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: could not start issue: %v\n", err)
-			}
+		if dirty {
 			fmt.Println("Worktree is dirty — commit or stash to checkout the branch.")
-		} else {
-			if err := linear.StartIssueWithCheckout(identifier); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: could not start issue: %v\n", err)
-			}
-		}
-
-		// Fetch full details and open task note
-		issue, err := linear.IssueByIdentifier(identifier)
-		if err != nil {
-			return fmt.Errorf("failed to fetch issue: %w", err)
 		}
 
 		return notes.OpenTask(cfg, issue)
@@ -93,7 +65,7 @@ var workCmd = &cobra.Command{
 func gitWorktreeDirty() bool {
 	out, err := exec.Command("git", "status", "--porcelain").Output()
 	if err != nil {
-		return true // assume dirty if we can't check
+		return true
 	}
 	return strings.TrimSpace(string(out)) != ""
 }

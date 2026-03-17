@@ -24,7 +24,9 @@ var standupCmd = &cobra.Command{
 			return err
 		}
 
+		fmt.Print("Gathering standup data...")
 		data := standup.Aggregate(cfg, time.Now())
+		fmt.Print("\r                         \r")
 
 		md := standup.Format(data)
 		fmt.Print(md)

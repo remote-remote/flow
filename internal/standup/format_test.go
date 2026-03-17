@@ -18,13 +18,13 @@ func TestFormat(t *testing.T) {
 
 	got := Format(data)
 
-	if !strings.Contains(got, "[ENG-1](https://linear.app/eng-1)") {
-		t.Errorf("missing linked identifier, got:\n%s", got)
+	if !strings.Contains(got, "[[ENG-1] Fixed bug (Done)](https://linear.app/eng-1)") {
+		t.Errorf("missing linked item, got:\n%s", got)
 	}
 	if !strings.Contains(got, "[PR: Review auth changes](https://github.com/pr/1)") {
 		t.Errorf("missing linked PR, got:\n%s", got)
 	}
-	if !strings.Contains(got, "[ENG-2](https://linear.app/eng-2)") {
+	if !strings.Contains(got, "[[ENG-2] Deploy fix](https://linear.app/eng-2)") {
 		t.Errorf("missing linked today item, got:\n%s", got)
 	}
 }

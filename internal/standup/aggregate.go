@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 	"github.com/remote-remote/flow/internal/linear"
 	"github.com/remote-remote/flow/internal/notes"
 )
+
+var identifierRe = regexp.MustCompile(`^([A-Z]+-\d+)`)
 
 type Item struct {
 	Text   string
@@ -42,7 +45,7 @@ func Aggregate(cfg *config.Config, date time.Time) StandupData {
 		for _, iss := range issues {
 			data.Yesterday = append(data.Yesterday, Item{
 				Text:   fmt.Sprintf("[%s] %s (%s)", iss.Identifier, iss.Title, iss.State.Name),
-				URL:    iss.URL,
+				URL:    resolveIssueURL(iss),
 				Source: "linear",
 			})
 		}
@@ -57,7 +60,7 @@ func Aggregate(cfg *config.Config, date time.Time) StandupData {
 			}
 			data.Today = append(data.Today, Item{
 				Text:   fmt.Sprintf("[%s] %s", iss.Identifier, iss.Title),
-				URL:    iss.URL,
+				URL:    resolveIssueURL(iss),
 				Source: "linear",
 			})
 		}
@@ -79,6 +82,7 @@ func Aggregate(cfg *config.Config, date time.Time) StandupData {
 		for _, link := range links {
 			data.Yesterday = append(data.Yesterday, Item{
 				Text:   link,
+				URL:    resolveURLFromText(link),
 				Source: "notes",
 			})
 		}
@@ -97,6 +101,7 @@ func Aggregate(cfg *config.Config, date time.Time) StandupData {
 			if !dup {
 				data.Yesterday = append(data.Yesterday, Item{
 					Text:   item,
+					URL:    resolveURLFromText(item),
 					Source: "notes",
 				})
 			}
@@ -179,4 +184,27 @@ func readTaskTitle(path string) string {
 
 func TaskNotePath(vaultPath, identifier string) string {
 	return notes.TaskNotePath(vaultPath, identifier)
+}
+
+// resolveIssueURL returns the issue URL, fetching via i get if not already present.
+func resolveIssueURL(iss linear.Issue) string {
+	if iss.URL != "" {
+		return iss.URL
+	}
+	return resolveURLByIdentifier(iss.Identifier)
+}
+
+// resolveURLFromText extracts an identifier from text like "ENG-42: Fix thing" and resolves its URL.
+func resolveURLFromText(text string) string {
+	if m := identifierRe.FindString(text); m != "" {
+		return resolveURLByIdentifier(m)
+	}
+	return ""
+}
+
+func resolveURLByIdentifier(identifier string) string {
+	if full, err := linear.IssueByIdentifier(identifier); err == nil && full.URL != "" {
+		return full.URL
+	}
+	return ""
 }

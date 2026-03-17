@@ -107,14 +107,21 @@ func IssuesChangedSince(since string) ([]Issue, error) {
 	return issues, nil
 }
 
-// StartIssue assigns the issue to the current user and sets it to In Progress.
+// StartIssue sets the issue to In Progress and assigns to the current user.
+// Uses explicit update instead of `i start` which misassigns workflow state.
 func StartIssue(identifier string) error {
-	_, err := linearCLI("i", "start", identifier)
+	if _, err := linearCLI("i", "update", identifier, "-s", "In Progress"); err != nil {
+		return err
+	}
+	_, err := linearCLI("i", "assign", identifier, "me")
 	return err
 }
 
 // StartIssueWithCheckout starts the issue and checks out the git branch.
 func StartIssueWithCheckout(identifier string) error {
-	_, err := linearCLI("i", "start", identifier, "--checkout")
+	if err := StartIssue(identifier); err != nil {
+		return err
+	}
+	_, err := linearCLI("g", "checkout", identifier)
 	return err
 }

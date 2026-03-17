@@ -19,7 +19,7 @@ func Menu(page string) string {
 	p := tea.NewProgram(initMenu(page))
 	finalModel, err := p.Run()
 	if err != nil {
-		fmt.Printf("Error occurred")
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	m := finalModel.(model)
@@ -80,21 +80,18 @@ func initMenu(page string) model {
 	case "note":
 		m.setNoteItems()
 	}
-	fmt.Printf("initMenu")
-
 	return m
 }
 
 func (m *model) setRootItems() {
-	fmt.Printf("setRootItems\n")
 	m.list.SetItems([]list.Item{
 		item{title: "Notes", desc: "Work with notes", key: "note"},
+		item{title: "Standup", desc: "Generate standup from yesterday's work", key: "standup"},
 		item{title: "Configure", desc: "Configure Flow", key: "config"},
 	})
 }
 
 func (m *model) setNoteItems() {
-	fmt.Printf("setNoteItems\n")
 	m.list.SetItems([]list.Item{
 		item{title: "Task note", key: "note:task", desc: "Open a note for a Linear task"},
 		item{title: "Daily note", key: "note:daily", desc: "Open today's daily note"},
@@ -102,7 +99,6 @@ func (m *model) setNoteItems() {
 }
 
 func (m model) handleSelection() (tea.Model, tea.Cmd) {
-	fmt.Printf("handleSelection")
 	key := m.list.SelectedItem().(item).key
 	if key == "note" {
 		m.setNoteItems()

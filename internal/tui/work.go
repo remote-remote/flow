@@ -37,16 +37,17 @@ type IssueStartedMsg struct {
 }
 
 type workModel struct {
-	phase    workPhase
-	spinner  spinner.Model
-	list     list.Model
-	project  *linear.Project
-	selected *linear.Issue
-	dirty    bool
-	err      error
-	width    int
-	height   int
-	startFn  func(identifier string) IssueStartedMsg
+	phase        workPhase
+	spinner      spinner.Model
+	list         list.Model
+	projectItems []list.Item // saved for back navigation
+	project      *linear.Project
+	selected     *linear.Issue
+	dirty        bool
+	err          error
+	width        int
+	height       int
+	startFn      func(identifier string) IssueStartedMsg
 }
 
 type WorkResult struct {
@@ -144,6 +145,9 @@ func (m workModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.phase == workPickProject || m.phase == workPickIssue {
+			if isBackKey(msg, m.list) {
+				return m.handleBack()
+			}
 			if msg.String() == "enter" {
 				return m.handleSelection()
 			}
@@ -171,6 +175,7 @@ func (m workModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i, p := range msg.projects {
 			items[i] = projectItem{project: p}
 		}
+		m.projectItems = items
 		m.list = list.New(items, list.NewDefaultDelegate(), m.width, m.height)
 		m.list.Title = "Select Project"
 		m.phase = workPickProject
@@ -204,6 +209,22 @@ func (m workModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 
+	return m, nil
+}
+
+func (m workModel) handleBack() (tea.Model, tea.Cmd) {
+	switch m.phase {
+	case workPickIssue:
+		// Go back to project picker
+		m.list = list.New(m.projectItems, list.NewDefaultDelegate(), m.width, m.height)
+		m.list.Title = "Select Project"
+		m.project = nil
+		m.phase = workPickProject
+		return m, nil
+	case workPickProject:
+		// Go back to root menu
+		return m, func() tea.Msg { return BackMsg{} }
+	}
 	return m, nil
 }
 

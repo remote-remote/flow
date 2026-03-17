@@ -136,6 +136,9 @@ func (m taskPickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		if m.phase == taskPicking {
+			if isBackKey(msg, m.list) {
+				return m, func() tea.Msg { return BackMsg{} }
+			}
 			if msg.String() == "enter" {
 				if sel := m.list.SelectedItem(); sel != nil {
 					issue := sel.(issueItem).issue

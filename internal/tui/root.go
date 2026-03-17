@@ -100,6 +100,11 @@ func (m rootModel) View() tea.View {
 func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// If delegated to a sub-model, forward everything there
 	if m.phase == rootDelegated && m.delegate != nil {
+		// Check for BackMsg before forwarding
+		if _, ok := msg.(BackMsg); ok {
+			return m.returnToMenu()
+		}
+
 		updated, cmd := m.delegate.Update(msg)
 		m.delegate = updated
 
@@ -121,6 +126,16 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
+		}
+		if isBackKey(msg, m.list) && m.page != "" {
+			m.page = ""
+			m.list.SetItems([]list.Item{
+				item{title: "Work", desc: "Pick a task to work on", key: "work"},
+				item{title: "Notes", desc: "Work with notes", key: "note"},
+				item{title: "Standup", desc: "Generate standup from yesterday's work", key: "standup"},
+				item{title: "Configure", desc: "Configure Flow", key: "config"},
+			})
+			return m, nil
 		}
 		if msg.String() == "enter" || msg.String() == "space" {
 			return m.handleSelection()
@@ -186,6 +201,15 @@ func (m rootModel) delegateToTaskPicker() (tea.Model, tea.Cmd) {
 	m.phase = rootDelegated
 	m.delegate = sub
 	return m, sub.Init()
+}
+
+func (m rootModel) returnToMenu() (tea.Model, tea.Cmd) {
+	m.phase = rootMenu
+	m.delegate = nil
+	m.initList()
+	h, v := docStyle.GetFrameSize()
+	m.list.SetSize(m.width-h, m.height-v)
+	return m, nil
 }
 
 func (m rootModel) collectDelegateResult() (tea.Model, tea.Cmd) {

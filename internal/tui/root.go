@@ -85,6 +85,7 @@ func initMenu(page string) model {
 
 func (m *model) setRootItems() {
 	m.list.SetItems([]list.Item{
+		item{title: "Work", desc: "Pick a task to work on", key: "work"},
 		item{title: "Notes", desc: "Work with notes", key: "note"},
 		item{title: "Standup", desc: "Generate standup from yesterday's work", key: "standup"},
 		item{title: "Configure", desc: "Configure Flow", key: "config"},

@@ -28,7 +28,7 @@ func TestCrossLinkToDaily(t *testing.T) {
 		Identifier: "ENG-42",
 		Title:      "Fix the thing",
 		URL:        "https://linear.app/eng-42",
-		State:      linear.IssueState{Name: "In Progress", Category: "started"},
+		State:      linear.IssueState{Name: "In Progress"},
 	}
 
 	// Create daily note first
@@ -65,7 +65,7 @@ func TestRenderTaskTemplate(t *testing.T) {
 		Identifier: "ENG-99",
 		Title:      "Build the widget",
 		URL:        "https://linear.app/eng-99",
-		State:      linear.IssueState{Name: "Todo", Category: "unstarted"},
+		State:      linear.IssueState{Name: "Todo"},
 	}
 
 	got := renderTaskTemplate(issue)

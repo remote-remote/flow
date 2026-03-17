@@ -1,9 +1,11 @@
 package cmd
 
 import (
-	"context"
 	"errors"
 	"fmt"
+	"os/exec"
+	"regexp"
+	"strings"
 
 	"github.com/remote-remote/flow/internal/config"
 	"github.com/remote-remote/flow/internal/linear"
@@ -11,6 +13,8 @@ import (
 	tui "github.com/remote-remote/flow/internal/tui"
 	"github.com/spf13/cobra"
 )
+
+var issueIDRe = regexp.MustCompile(`[A-Z]+-\d+`)
 
 var taskNote = &cobra.Command{
 	Use:   "task [identifier]",
@@ -26,29 +30,14 @@ var taskNote = &cobra.Command{
 			return err
 		}
 
-		apiKey, err := config.GetSecret("linear-api-key")
-		if err != nil {
-			fmt.Println("Linear API key not configured. Run `flow config` to set up.")
-			return nil
-		}
-
-		client := linear.NewClient(apiKey)
-		ctx := context.Background()
-
-		var issue *linear.Issue
+		var identifier string
 
 		if len(args) == 1 {
-			// Direct identifier lookup
-			issue, err = client.IssueByIdentifier(ctx, args[0])
-			if err != nil {
-				return fmt.Errorf("failed to fetch issue: %w", err)
-			}
-			if issue == nil {
-				return fmt.Errorf("issue %s not found", args[0])
-			}
+			identifier = args[0]
+		} else if id := identifierFromBranch(); id != "" {
+			identifier = id
 		} else {
-			// Interactive picker
-			issues, err := client.AssignedIssues(ctx)
+			issues, err := linear.AssignedIssues()
 			if err != nil {
 				return fmt.Errorf("failed to fetch issues: %w", err)
 			}
@@ -56,12 +45,27 @@ var taskNote = &cobra.Command{
 				fmt.Println("No assigned issues found.")
 				return nil
 			}
-			issue = tui.PickIssue(issues)
-			if issue == nil {
-				return nil // cancelled
+			picked := tui.PickIssue(issues)
+			if picked == nil {
+				return nil
 			}
+			identifier = picked.Identifier
+		}
+
+		issue, err := linear.IssueByIdentifier(identifier)
+		if err != nil {
+			return fmt.Errorf("failed to fetch issue: %w", err)
 		}
 
 		return notes.OpenTask(cfg, issue)
 	},
+}
+
+func identifierFromBranch() string {
+	out, err := exec.Command("git", "branch", "--show-current").Output()
+	if err != nil {
+		return ""
+	}
+	branch := strings.TrimSpace(string(out))
+	return issueIDRe.FindString(branch)
 }

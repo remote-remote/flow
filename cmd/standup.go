@@ -1,14 +1,12 @@
 package cmd
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/atotto/clipboard"
 	"github.com/remote-remote/flow/internal/config"
-	"github.com/remote-remote/flow/internal/linear"
 	"github.com/remote-remote/flow/internal/standup"
 	"github.com/spf13/cobra"
 )
@@ -26,13 +24,7 @@ var standupCmd = &cobra.Command{
 			return err
 		}
 
-		var linearClient *linear.Client
-		if apiKey, err := config.GetSecret("linear-api-key"); err == nil && apiKey != "" {
-			linearClient = linear.NewClient(apiKey)
-		}
-
-		ctx := context.Background()
-		data := standup.Aggregate(ctx, cfg, linearClient, time.Now())
+		data := standup.Aggregate(cfg, time.Now())
 
 		md := standup.Format(data)
 		fmt.Print(md)

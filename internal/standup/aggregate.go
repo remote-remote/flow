@@ -1,7 +1,6 @@
 package standup
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,7 +17,6 @@ type Item struct {
 	Text   string
 	URL    string
 	Source string // "linear", "github", "notes"
-	Kept   bool
 }
 
 type StandupData struct {
@@ -27,41 +25,41 @@ type StandupData struct {
 }
 
 // Aggregate collects standup data from Linear, GitHub, and notes.
-func Aggregate(ctx context.Context, cfg *config.Config, linearClient *linear.Client, date time.Time) StandupData {
+func Aggregate(cfg *config.Config, date time.Time) StandupData {
 	yesterday := date.AddDate(0, 0, -1)
 	// Skip weekends: if today is Monday, look back to Friday
 	if date.Weekday() == time.Monday {
 		yesterday = date.AddDate(0, 0, -3)
 	}
 
+	days := int(date.Sub(yesterday).Hours()/24) + 1
+	since := fmt.Sprintf("%dd", days)
+
 	var data StandupData
 
 	// Linear: issues changed since yesterday
-	if linearClient != nil {
-		if issues, err := linearClient.IssuesChangedSince(ctx, yesterday); err == nil {
-			for _, iss := range issues {
-				data.Yesterday = append(data.Yesterday, Item{
-					Text:   fmt.Sprintf("[%s] %s (%s)", iss.Identifier, iss.Title, iss.State.Name),
-					URL:    iss.URL,
-					Source: "linear",
-					Kept:   true,
-				})
-			}
+	if issues, err := linear.IssuesChangedSince(since); err == nil {
+		for _, iss := range issues {
+			data.Yesterday = append(data.Yesterday, Item{
+				Text:   fmt.Sprintf("[%s] %s (%s)", iss.Identifier, iss.Title, iss.State.Name),
+				URL:    iss.URL,
+				Source: "linear",
+			})
 		}
+	}
 
-		// Today: active/todo issues
-		if issues, err := linearClient.AssignedIssues(ctx); err == nil {
-			for _, iss := range issues {
-				cat := iss.State.Category
-				if cat == "started" || cat == "unstarted" {
-					data.Today = append(data.Today, Item{
-						Text:   fmt.Sprintf("[%s] %s", iss.Identifier, iss.Title),
-						URL:    iss.URL,
-						Source: "linear",
-						Kept:   false,
-					})
-				}
+	// Linear: active/todo issues for today
+	if issues, err := linear.AssignedIssues(); err == nil {
+		for _, iss := range issues {
+			state := iss.State.Name
+			if state == "Done" || state == "Canceled" || state == "Cancelled" || state == "Duplicate" {
+				continue
 			}
+			data.Today = append(data.Today, Item{
+				Text:   fmt.Sprintf("[%s] %s", iss.Identifier, iss.Title),
+				URL:    iss.URL,
+				Source: "linear",
+			})
 		}
 	}
 
@@ -72,7 +70,6 @@ func Aggregate(ctx context.Context, cfg *config.Config, linearClient *linear.Cli
 				Text:   fmt.Sprintf("PR: %s", pr.Title),
 				URL:    pr.URL,
 				Source: "github",
-				Kept:   true,
 			})
 		}
 	}
@@ -83,7 +80,6 @@ func Aggregate(ctx context.Context, cfg *config.Config, linearClient *linear.Cli
 			data.Yesterday = append(data.Yesterday, Item{
 				Text:   link,
 				Source: "notes",
-				Kept:   true,
 			})
 		}
 	}
@@ -91,7 +87,6 @@ func Aggregate(ctx context.Context, cfg *config.Config, linearClient *linear.Cli
 	// Notes: recently modified task notes
 	if items := recentTaskNotes(cfg, yesterday); len(items) > 0 {
 		for _, item := range items {
-			// Avoid duplicates with daily note links
 			dup := false
 			for _, existing := range data.Yesterday {
 				if strings.Contains(existing.Text, item) {
@@ -103,7 +98,6 @@ func Aggregate(ctx context.Context, cfg *config.Config, linearClient *linear.Cli
 				data.Yesterday = append(data.Yesterday, Item{
 					Text:   item,
 					Source: "notes",
-					Kept:   true,
 				})
 			}
 		}
@@ -126,7 +120,6 @@ func taskLinksFromDaily(cfg *config.Config, date time.Time) []string {
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "- [[Tasks/") {
-			// Extract the display text from [[path|display]]
 			if idx := strings.Index(line, "|"); idx != -1 {
 				end := strings.Index(line[idx:], "]]")
 				if end != -1 {
@@ -156,7 +149,6 @@ func recentTaskNotes(cfg *config.Config, since time.Time) []string {
 		}
 		if info.ModTime().After(since) {
 			id := strings.TrimSuffix(entry.Name(), ".md")
-			// Read first line of frontmatter for title
 			title := readTaskTitle(filepath.Join(tasksDir, entry.Name()))
 			if title != "" {
 				items = append(items, fmt.Sprintf("%s: %s", id, title))
@@ -185,7 +177,6 @@ func readTaskTitle(path string) string {
 	return ""
 }
 
-// TaskNotePath re-exports for use by aggregate without circular import.
 func TaskNotePath(vaultPath, identifier string) string {
 	return notes.TaskNotePath(vaultPath, identifier)
 }

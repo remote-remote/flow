@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/remote-remote/flow/internal/config"
@@ -13,16 +14,18 @@ type configState int
 
 const (
 	stateVaultInput configState = iota
+	stateLinearKeyInput
 	stateError
 	stateDone
 )
 
 type configModel struct {
-	state    configState
-	input    string
-	cursor   int
-	err      string
-	finished bool
+	state     configState
+	vault     string
+	linearKey string
+	input     string
+	err       string
+	finished  bool
 }
 
 func ConfigWizard() error {
@@ -48,10 +51,16 @@ func (m configModel) View() tea.View {
 	switch m.state {
 	case stateVaultInput:
 		s = "Obsidian vault path: " + m.input + "█\n\n(enter to confirm, ctrl+c to cancel)"
+	case stateLinearKeyInput:
+		masked := strings.Repeat("•", len(m.input))
+		s = fmt.Sprintf("Vault: %s ✓\n\nLinear API key: %s█\n\n(enter to confirm, leave empty to skip)", m.vault, masked)
 	case stateError:
-		s = fmt.Sprintf("Error: %s\n\nObsidian vault path: %s█", m.err, m.input)
+		s = fmt.Sprintf("Error: %s\n\n> %s█", m.err, m.input)
 	case stateDone:
-		s = fmt.Sprintf("Config saved! Vault: %s\n", m.input)
+		s = fmt.Sprintf("Config saved! Vault: %s\n", m.vault)
+		if m.linearKey != "" {
+			s += "Linear API key: stored in keyring\n"
+		}
 	}
 
 	v := tea.NewView("\n  " + s + "\n")
@@ -65,7 +74,7 @@ func (m configModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "enter":
-			return m.validateAndSave()
+			return m.handleEnter()
 		case "backspace":
 			if len(m.input) > 0 {
 				m.input = m.input[:len(m.input)-1]
@@ -81,7 +90,26 @@ func (m configModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m configModel) validateAndSave() (tea.Model, tea.Cmd) {
+func (m configModel) handleEnter() (tea.Model, tea.Cmd) {
+	switch m.state {
+	case stateVaultInput:
+		return m.validateVault()
+	case stateLinearKeyInput:
+		return m.saveLinearKey()
+	case stateError:
+		// Re-enter current step
+		m.input = ""
+		if m.vault == "" {
+			m.state = stateVaultInput
+		} else {
+			m.state = stateLinearKeyInput
+		}
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m configModel) validateVault() (tea.Model, tea.Cmd) {
 	path := m.input
 
 	// Expand ~
@@ -100,14 +128,32 @@ func (m configModel) validateAndSave() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	cfg := &config.Config{VaultPath: path}
+	m.vault = path
+	m.input = ""
+	m.state = stateLinearKeyInput
+	return m, nil
+}
+
+func (m configModel) saveLinearKey() (tea.Model, tea.Cmd) {
+	m.linearKey = m.input
+
+	// Save config file
+	cfg := &config.Config{VaultPath: m.vault}
 	if err := config.Save(cfg); err != nil {
 		m.state = stateError
 		m.err = err.Error()
 		return m, nil
 	}
 
-	m.input = path
+	// Save Linear API key to keyring if provided
+	if m.linearKey != "" {
+		if err := config.SetSecret("linear-api-key", m.linearKey); err != nil {
+			m.state = stateError
+			m.err = fmt.Sprintf("failed to store API key in keyring: %v", err)
+			return m, nil
+		}
+	}
+
 	m.state = stateDone
 	m.finished = true
 	return m, tea.Quit

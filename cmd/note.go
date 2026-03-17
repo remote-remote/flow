@@ -16,6 +16,6 @@ var noteCmd = &cobra.Command{
 }
 
 func init() {
-	noteCmd.AddCommand(branchNote)
+	noteCmd.AddCommand(taskNote)
 	noteCmd.AddCommand(dailyNote)
 }

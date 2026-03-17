@@ -96,7 +96,7 @@ func (m *model) setRootItems() {
 func (m *model) setNoteItems() {
 	fmt.Printf("setNoteItems\n")
 	m.list.SetItems([]list.Item{
-		item{title: "Branch note", key: "note:branch", desc: "Open a note in your vault for the current branch"},
+		item{title: "Task note", key: "note:task", desc: "Open a note for a Linear task"},
 		item{title: "Daily note", key: "note:daily", desc: "Open today's daily note"},
 	})
 }

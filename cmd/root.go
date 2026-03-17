@@ -2,10 +2,12 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/remote-remote/flow/internal/config"
 	tui "github.com/remote-remote/flow/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -16,15 +18,19 @@ var rootCommand = &cobra.Command{
 	Use:   "flow",
 	Short: "A devtool for keeping flow in a terminal.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		var t string
+		// First-run: check if configured
+		cfg, err := config.Load()
+		if err != nil {
+			if errors.Is(err, config.ErrNotConfigured) {
+				fmt.Println("Welcome to Flow! Let's set up your config first.")
+				return tui.ConfigWizard()
+			}
+			return err
+		}
+		_ = cfg
 
-		fmt.Printf("RunE")
-
-		if len(args) == 0 {
-			fmt.Printf("no args")
-			t = ""
-		} else {
-			fmt.Printf("some args %s", args[0])
+		t := ""
+		if len(args) > 0 {
 			t = args[0]
 		}
 
@@ -50,4 +56,5 @@ func Execute() {
 
 func init() {
 	rootCommand.AddCommand(noteCmd)
+	rootCommand.AddCommand(configCmd)
 }

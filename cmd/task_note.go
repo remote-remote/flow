@@ -6,13 +6,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var branchNote = &cobra.Command{
-	Use:   "branch",
-	Short: "Open branch note",
+var taskNote = &cobra.Command{
+	Use:   "task",
+	Short: "Open a task note",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println("branch note command")
+		fmt.Println("task note command — coming in Phase 2")
 		return nil
 	},
 }
-
-func init() {}

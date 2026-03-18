@@ -20,6 +20,9 @@ type MenuResult struct {
 
 	// Issue is the resolved issue from an inline task/work flow.
 	Issue any
+
+	// RemindResult is set when a reminder was created inline.
+	RemindResult *RemindResult
 }
 
 var docStyle = lipgloss.NewStyle().Margin(1, 2)
@@ -67,6 +70,7 @@ func (m *rootModel) initList() {
 		m.list.SetItems([]list.Item{
 			item{title: "Work", desc: "Pick a task to work on", key: "work"},
 			item{title: "Notes", desc: "Work with notes", key: "note"},
+			item{title: "Remind", desc: "Set or manage reminders", key: "remind"},
 			item{title: "Standup", desc: "Generate standup from yesterday's work", key: "standup"},
 			item{title: "Configure", desc: "Configure Flow", key: "config"},
 		})
@@ -121,12 +125,7 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if isBackKey(msg, m.list) && m.page != "" {
 			m.page = ""
-			m.list.SetItems([]list.Item{
-				item{title: "Work", desc: "Pick a task to work on", key: "work"},
-				item{title: "Notes", desc: "Work with notes", key: "note"},
-				item{title: "Standup", desc: "Generate standup from yesterday's work", key: "standup"},
-				item{title: "Configure", desc: "Configure Flow", key: "config"},
-			})
+			m.initList()
 			return m, nil
 		}
 		if msg.String() == "enter" || msg.String() == "space" {
@@ -161,6 +160,9 @@ func (m rootModel) handleSelection() (tea.Model, tea.Cmd) {
 	case "note:task":
 		return m.delegateToTaskPicker()
 
+	case "remind":
+		return m.delegateToRemind()
+
 	default:
 		// Non-TUI actions: exit and let cmd layer handle
 		m.result = MenuResult{Action: key}
@@ -194,6 +196,15 @@ func (m rootModel) delegateToTaskPicker() (tea.Model, tea.Cmd) {
 	return m, sub.Init()
 }
 
+func (m rootModel) delegateToRemind() (tea.Model, tea.Cmd) {
+	sub := newRemindModel()
+	sub.width = m.width
+	sub.height = m.height
+	m.phase = rootDelegated
+	m.delegate = sub
+	return m, sub.Init()
+}
+
 func (m rootModel) returnToMenu() (tea.Model, tea.Cmd) {
 	m.phase = rootMenu
 	m.delegate = nil
@@ -209,6 +220,8 @@ func (m *rootModel) isDelegateComplete() bool {
 		return sub.selected != nil || sub.err != nil
 	case taskPickerModel:
 		return sub.selected != nil || sub.err != nil
+	case remindModel:
+		return sub.result != nil || sub.err != nil
 	}
 	return false
 }
@@ -227,6 +240,13 @@ func (m rootModel) collectDelegateResult() (tea.Model, tea.Cmd) {
 			m.result = MenuResult{
 				Action: "note:task:done",
 				Issue:  sub.selected,
+			}
+		}
+	case remindModel:
+		if sub.result != nil {
+			m.result = MenuResult{
+				Action:       "remind:done",
+				RemindResult: sub.result,
 			}
 		}
 	}

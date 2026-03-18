@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -24,34 +22,10 @@ var remindCmd = &cobra.Command{
 		}
 
 		message := strings.Join(args[1:], " ")
-		fireAt := time.Now().Add(duration)
 
-		// Find our own executable path
-		self, err := os.Executable()
-		if err != nil {
+		if err := spawnReminder(duration, message); err != nil {
 			return err
 		}
-
-		// Spawn a detached process that sleeps and fires
-		proc := exec.Command(self, "_fire", strconv.FormatInt(fireAt.Unix(), 10), message)
-		proc.SysProcAttr = sysProcAttr()
-		proc.Stdout = nil
-		proc.Stderr = nil
-		proc.Stdin = nil
-		if err := proc.Start(); err != nil {
-			return fmt.Errorf("failed to start reminder process: %w", err)
-		}
-
-		id, err := remind.Add(proc.Process.Pid, message, fireAt)
-		if err != nil {
-			return err
-		}
-
-		// Detach — don't wait for the child
-		proc.Process.Release()
-
-		fmt.Printf("Reminder #%d set: %q in %s (at %s)\n",
-			id, message, remind.FormatDuration(duration), fireAt.Format("15:04"))
 		return nil
 	},
 }

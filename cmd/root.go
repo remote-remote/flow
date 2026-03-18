@@ -51,6 +51,10 @@ var rootCommand = &cobra.Command{
 			if issue, ok := result.Issue.(*linear.Issue); ok {
 				return notes.OpenTask(cfg, issue)
 			}
+		case "remind:done":
+			if result.RemindResult != nil {
+				return spawnReminder(result.RemindResult.Duration, result.RemindResult.Message)
+			}
 		case "standup":
 			tuiSelection = "standup"
 		case "config":

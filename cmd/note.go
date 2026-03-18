@@ -12,7 +12,7 @@ var noteCmd = &cobra.Command{
 	Use:   "note",
 	Short: "Work with notes",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		result := tui.Menu("note", nil)
+		result := tui.Menu("note")
 
 		switch result.Action {
 		case "note:task:done":

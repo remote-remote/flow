@@ -42,18 +42,18 @@ type taskPickerModel struct {
 // then fetches full details (with URL) before returning. TUI stays up the whole time.
 func RunTaskPicker() (*linear.Issue, error) {
 	s := spinner.New(spinner.WithSpinner(spinner.MiniDot))
-	m := taskPickerModel{
+	inner := taskPickerModel{
 		phase:   taskLoading,
 		spinner: s,
 	}
 
-	p := tea.NewProgram(m)
+	p := tea.NewProgram(standaloneModel{inner: inner})
 	finalModel, err := p.Run()
 	if err != nil {
 		return nil, err
 	}
 
-	fm := finalModel.(taskPickerModel)
+	fm := finalModel.(standaloneModel).inner.(taskPickerModel)
 	if fm.err != nil {
 		return nil, fm.err
 	}
@@ -64,19 +64,19 @@ func RunTaskPicker() (*linear.Issue, error) {
 // Keeps TUI up during the fetch so there's no flash.
 func RunTaskPickerForIdentifier(identifier string) (*linear.Issue, error) {
 	s := spinner.New(spinner.WithSpinner(spinner.MiniDot))
-	m := taskPickerModel{
+	inner := taskPickerModel{
 		phase:      taskFetchingDetails,
 		spinner:    s,
 		identifier: identifier,
 	}
 
-	p := tea.NewProgram(m)
+	p := tea.NewProgram(standaloneModel{inner: inner})
 	finalModel, err := p.Run()
 	if err != nil {
 		return nil, err
 	}
 
-	fm := finalModel.(taskPickerModel)
+	fm := finalModel.(standaloneModel).inner.(taskPickerModel)
 	if fm.err != nil {
 		return nil, fm.err
 	}
@@ -148,7 +148,7 @@ func (m taskPickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						fetchIssueDetail(issue.Identifier),
 					)
 				}
-				return m, tea.Quit
+				return m, nil
 			}
 			var cmd tea.Cmd
 			m.list, cmd = m.list.Update(msg)
@@ -164,11 +164,11 @@ func (m taskPickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case assignedLoadedMsg:
 		if msg.err != nil {
 			m.err = msg.err
-			return m, tea.Quit
+			return m, nil
 		}
 		if len(msg.issues) == 0 {
 			m.err = fmt.Errorf("no assigned issues found")
-			return m, tea.Quit
+			return m, nil
 		}
 		items := make([]list.Item, len(msg.issues))
 		for i, iss := range msg.issues {
@@ -182,10 +182,10 @@ func (m taskPickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case issueDetailMsg:
 		if msg.err != nil {
 			m.err = msg.err
-			return m, tea.Quit
+			return m, nil
 		}
 		m.selected = msg.issue
-		return m, tea.Quit
+		return m, nil
 	}
 
 	return m, nil

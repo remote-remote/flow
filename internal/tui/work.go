@@ -2,12 +2,22 @@ package tui
 
 import (
 	"fmt"
+	"os/exec"
+	"strings"
 
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"github.com/remote-remote/flow/internal/linear"
 )
+
+func gitDirty() bool {
+	out, err := exec.Command("git", "status", "--porcelain").Output()
+	if err != nil {
+		return true
+	}
+	return strings.TrimSpace(string(out)) != ""
+}
 
 type workPhase int
 
@@ -47,7 +57,6 @@ type workModel struct {
 	err          error
 	width        int
 	height       int
-	startFn      func(identifier string) IssueStartedMsg
 }
 
 type WorkResult struct {
@@ -57,21 +66,20 @@ type WorkResult struct {
 
 // RunWorkFlow shows a single TUI: load projects → pick → load issues → pick → start issue.
 // Stays in alt-screen the entire time.
-func RunWorkFlow(startFn func(identifier string) IssueStartedMsg) (*WorkResult, error) {
+func RunWorkFlow() (*WorkResult, error) {
 	s := spinner.New(spinner.WithSpinner(spinner.MiniDot))
-	m := workModel{
+	inner := workModel{
 		phase:   workLoadingProjects,
 		spinner: s,
-		startFn: startFn,
 	}
 
-	p := tea.NewProgram(m)
+	p := tea.NewProgram(standaloneModel{inner: inner})
 	finalModel, err := p.Run()
 	if err != nil {
 		return nil, err
 	}
 
-	fm := finalModel.(workModel)
+	fm := finalModel.(standaloneModel).inner.(workModel)
 	if fm.err != nil {
 		return nil, fm.err
 	}
@@ -165,11 +173,11 @@ func (m workModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case projectsLoadedMsg:
 		if msg.err != nil {
 			m.err = msg.err
-			return m, tea.Quit
+			return m, nil
 		}
 		if len(msg.projects) == 0 {
 			m.err = fmt.Errorf("no projects found")
-			return m, tea.Quit
+			return m, nil
 		}
 		items := make([]list.Item, len(msg.projects))
 		for i, p := range msg.projects {
@@ -184,11 +192,11 @@ func (m workModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case issuesLoadedMsg:
 		if msg.err != nil {
 			m.err = msg.err
-			return m, tea.Quit
+			return m, nil
 		}
 		if len(msg.issues) == 0 {
 			m.err = fmt.Errorf("no issues in this project")
-			return m, tea.Quit
+			return m, nil
 		}
 		items := make([]list.Item, len(msg.issues))
 		for i, iss := range msg.issues {
@@ -202,11 +210,11 @@ func (m workModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case IssueStartedMsg:
 		if msg.err != nil {
 			m.err = msg.err
-			return m, tea.Quit
+			return m, nil
 		}
 		m.selected = msg.issue
 		m.dirty = msg.dirty
-		return m, tea.Quit
+		return m, nil
 	}
 
 	return m, nil
@@ -249,11 +257,10 @@ func (m workModel) handleSelection() (tea.Model, tea.Cmd) {
 	case workPickIssue:
 		issue := sel.(issueItem).issue
 		m.phase = workStartingIssue
-		startFn := m.startFn
 		return m, tea.Batch(
 			m.spinner.Tick,
 			func() tea.Msg {
-				return startFn(issue.Identifier)
+				return StartIssueResult(issue.Identifier, gitDirty())
 			},
 		)
 	}

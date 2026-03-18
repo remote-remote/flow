@@ -13,17 +13,13 @@ import (
 // MenuResult is returned from the root menu to tell the cmd layer what to do.
 type MenuResult struct {
 	// Action is the selected command key (e.g. "note:daily", "standup", "config").
-	// Empty if the user selected a flow handled inline (work, note:task).
 	Action string
 
 	// WorkResult is set when the work flow completed inline.
 	WorkResult *WorkResult
 
-	// TaskIssue is set when the task note flow completed inline.
-	TaskIssue interface{ GetIdentifier() string }
-
 	// Issue is the resolved issue from an inline task/work flow.
-	Issue interface{}
+	Issue any
 }
 
 var docStyle = lipgloss.NewStyle().Margin(1, 2)
@@ -43,16 +39,14 @@ type rootModel struct {
 	width    int
 	height   int
 	page     string
-	startFn  func(string) IssueStartedMsg
 }
 
 // Menu runs the root menu. Actions that have their own TUI (work, task note)
 // run inline — no screen flash. Other actions return an Action string for the cmd layer.
-func Menu(page string, startFn func(string) IssueStartedMsg) MenuResult {
+func Menu(page string) MenuResult {
 	m := rootModel{
-		phase:   rootMenu,
-		page:    page,
-		startFn: startFn,
+		phase: rootMenu,
+		page:  page,
 	}
 	m.initList()
 
@@ -100,7 +94,6 @@ func (m rootModel) View() tea.View {
 func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// If delegated to a sub-model, forward everything there
 	if m.phase == rootDelegated && m.delegate != nil {
-		// Check for BackMsg before forwarding
 		if _, ok := msg.(BackMsg); ok {
 			return m.returnToMenu()
 		}
@@ -108,8 +101,7 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updated, cmd := m.delegate.Update(msg)
 		m.delegate = updated
 
-		// Check if sub-model is done (quit command)
-		if isQuitCmd(cmd) {
+		if m.isDelegateComplete() {
 			return m.collectDelegateResult()
 		}
 		return m, cmd
@@ -181,7 +173,6 @@ func (m rootModel) delegateToWork() (tea.Model, tea.Cmd) {
 	sub := workModel{
 		phase:   workLoadingProjects,
 		spinner: s,
-		startFn: m.startFn,
 		width:   m.width,
 		height:  m.height,
 	}
@@ -212,6 +203,16 @@ func (m rootModel) returnToMenu() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *rootModel) isDelegateComplete() bool {
+	switch sub := m.delegate.(type) {
+	case workModel:
+		return sub.selected != nil || sub.err != nil
+	case taskPickerModel:
+		return sub.selected != nil || sub.err != nil
+	}
+	return false
+}
+
 func (m rootModel) collectDelegateResult() (tea.Model, tea.Cmd) {
 	switch sub := m.delegate.(type) {
 	case workModel:
@@ -230,15 +231,4 @@ func (m rootModel) collectDelegateResult() (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, tea.Quit
-}
-
-// isQuitCmd checks if a tea.Cmd is tea.Quit.
-// We detect quit by running the cmd and checking if it produces a tea.QuitMsg.
-func isQuitCmd(cmd tea.Cmd) bool {
-	if cmd == nil {
-		return false
-	}
-	msg := cmd()
-	_, ok := msg.(tea.QuitMsg)
-	return ok
 }

@@ -4,7 +4,9 @@ package linear
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -30,8 +32,28 @@ type Project struct {
 
 func (p Project) FilterValue() string { return p.Name }
 
+// resolveLinearCLI finds the linear-cli binary, checking common locations if not in PATH.
+func resolveLinearCLI() string {
+	if p, err := exec.LookPath("linear-cli"); err == nil {
+		return p
+	}
+	// Check common install locations
+	home, _ := os.UserHomeDir()
+	for _, candidate := range []string{
+		filepath.Join(home, ".cargo", "bin", "linear-cli"),
+		"/usr/local/bin/linear-cli",
+	} {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	return "linear-cli" // fall back to PATH lookup
+}
+
+var linearCLIPath = resolveLinearCLI()
+
 func linearCLI(args ...string) ([]byte, error) {
-	cmd := exec.Command("linear-cli", args...)
+	cmd := exec.Command(linearCLIPath, args...)
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {

@@ -40,10 +40,7 @@ var workCmd = &cobra.Command{
 			}
 			issue = result.Issue()
 		} else {
-			d := gitWorktreeDirty()
-			result, err := tui.RunWorkFlow(func(identifier string) tui.IssueStartedMsg {
-				return tui.StartIssueResult(identifier, d)
-			})
+			result, err := tui.RunWorkFlow()
 			if err != nil {
 				return err
 			}

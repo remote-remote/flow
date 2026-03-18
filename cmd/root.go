@@ -14,8 +14,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// package variable for capturing args
 var tuiSelection string
 
+// Our root command
 var rootCommand = &cobra.Command{
 	Use:   "flow",
 	Short: "A devtool for keeping flow in a terminal.",
@@ -34,10 +36,7 @@ var rootCommand = &cobra.Command{
 			t = args[0]
 		}
 
-		dirty := gitWorktreeDirty()
-		result := tui.Menu(t, func(identifier string) tui.IssueStartedMsg {
-			return tui.StartIssueResult(identifier, dirty)
-		})
+		result := tui.Menu(t)
 
 		// Handle inline results that completed inside the TUI
 		switch result.Action {
@@ -64,12 +63,15 @@ var rootCommand = &cobra.Command{
 	},
 }
 
+// Execute is the main entrypoint for the CLI
 func Execute() {
+	// try running rootCommand's Execute
 	if err := rootCommand.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
+	// if there are subcommands we fire that
 	if tuiSelection != "" {
 		rootCommand.SetArgs(strings.Split(tuiSelection, ":"))
 		if err := rootCommand.Execute(); err != nil {
@@ -84,4 +86,7 @@ func init() {
 	rootCommand.AddCommand(configCmd)
 	rootCommand.AddCommand(standupCmd)
 	rootCommand.AddCommand(workCmd)
+	rootCommand.AddCommand(remindCmd)
+	rootCommand.AddCommand(fireCmd)
+	rootCommand.AddCommand(popupCmd)
 }

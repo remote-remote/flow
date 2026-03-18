@@ -66,7 +66,16 @@ func linearCLI(args ...string) ([]byte, error) {
 }
 
 func graphQL(query string) (json.RawMessage, error) {
-	out, err := linearCLI("api", query)
+	return graphQLWithVars(query, nil)
+}
+
+func graphQLWithVars(query string, vars map[string]string) (json.RawMessage, error) {
+	args := []string{"api"}
+	for k, v := range vars {
+		args = append(args, "--variable", k+"="+v)
+	}
+	args = append(args, query)
+	out, err := linearCLI(args...)
 	if err != nil {
 		return nil, err
 	}
@@ -100,12 +109,12 @@ func Projects() ([]Project, error) {
 
 // ProjectIssues returns all issues for a given project (including unassigned).
 func ProjectIssues(projectName string) ([]Issue, error) {
-	const query = `{
-		issues(first: 50, filter: { project: { name: { eq: "%s" } }, state: { type: { in: ["started", "unstarted", "backlog", "triage"] } } }, orderBy: updatedAt) {
+	const query = `query($name: String!) {
+		issues(first: 50, filter: { project: { name: { eq: $name } }, state: { type: { in: ["started", "unstarted", "backlog", "triage"] } } }, orderBy: updatedAt) {
 			nodes { id identifier title url state { name type } }
 		}
 	}`
-	data, err := graphQL(fmt.Sprintf(query, projectName))
+	data, err := graphQLWithVars(query, map[string]string{"name": projectName})
 	if err != nil {
 		return nil, err
 	}
@@ -209,13 +218,16 @@ func IssuesWorkedSince(since time.Time) ([]Issue, error) {
 	return issues, nil
 }
 
-// StartIssue sets the issue to In Progress, assigns to current user, and checks out a branch.
+// StartIssue sets the issue to In Progress and assigns to the current user
+// without any git operations. Used when the worktree is dirty.
 func StartIssue(identifier string) error {
-	_, err := linearCLI("issue", "start", identifier)
+	_, err := linearCLI("issue", "update", identifier, "--state", "In Progress", "--assign-to-me")
 	return err
 }
 
-// StartIssueWithCheckout is the same as StartIssue — schpet/linear-cli always checks out.
+// StartIssueWithCheckout starts the issue (sets state + assigns) and checks out a branch.
+// Used when the worktree is clean.
 func StartIssueWithCheckout(identifier string) error {
-	return StartIssue(identifier)
+	_, err := linearCLI("issue", "start", identifier)
+	return err
 }

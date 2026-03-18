@@ -38,6 +38,10 @@ var rootCommand = &cobra.Command{
 
 		result := tui.Menu(t)
 
+		if result.Err != nil {
+			return result.Err
+		}
+
 		// Handle inline results that completed inside the TUI
 		switch result.Action {
 		case "work:done":

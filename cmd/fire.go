@@ -126,19 +126,21 @@ func selfExecutable() (string, error) {
 }
 
 func cleanupFiredReminder(message string) {
-	reminders, err := remind.Load()
-	if err != nil {
-		return
-	}
-	pid := pidSelf()
-	filtered := reminders[:0]
-	for _, r := range reminders {
-		if r.PID == pid || (r.Message == message && time.Until(r.FireAt) <= 0) {
-			continue
+	remind.WithLock(func() error {
+		reminders, err := remind.Load()
+		if err != nil {
+			return err
 		}
-		filtered = append(filtered, r)
-	}
-	remind.Save(filtered)
+		pid := pidSelf()
+		filtered := reminders[:0]
+		for _, r := range reminders {
+			if r.PID == pid || (r.Message == message && time.Until(r.FireAt) <= 0) {
+				continue
+			}
+			filtered = append(filtered, r)
+		}
+		return remind.Save(filtered)
+	})
 }
 
 func pidSelf() int {

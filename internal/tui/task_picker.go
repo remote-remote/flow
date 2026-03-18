@@ -108,13 +108,17 @@ func (m taskPickerModel) Init() tea.Cmd {
 
 func (m taskPickerModel) View() tea.View {
 	var s string
-	switch m.phase {
-	case taskLoading:
-		s = fmt.Sprintf("\n  %s Loading issues...\n", m.spinner.View())
-	case taskPicking:
-		s = m.list.View()
-	case taskFetchingDetails:
-		s = fmt.Sprintf("\n  %s Loading issue details...\n", m.spinner.View())
+	if m.err != nil {
+		s = fmt.Sprintf("\n  Error: %s\n\n  Press any key to go back.\n", m.err)
+	} else {
+		switch m.phase {
+		case taskLoading:
+			s = fmt.Sprintf("\n  %s Loading issues...\n", m.spinner.View())
+		case taskPicking:
+			s = m.list.View()
+		case taskFetchingDetails:
+			s = fmt.Sprintf("\n  %s Loading issue details...\n", m.spinner.View())
+		}
 	}
 	v := tea.NewView(s)
 	v.AltScreen = true

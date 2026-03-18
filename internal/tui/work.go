@@ -11,7 +11,8 @@ import (
 	"github.com/remote-remote/flow/internal/linear"
 )
 
-func gitDirty() bool {
+// GitDirty returns true if the git worktree has uncommitted changes.
+func GitDirty() bool {
 	out, err := exec.Command("git", "status", "--porcelain").Output()
 	if err != nil {
 		return true
@@ -120,17 +121,21 @@ func (m workModel) Init() tea.Cmd {
 
 func (m workModel) View() tea.View {
 	var s string
-	switch m.phase {
-	case workLoadingProjects:
-		s = fmt.Sprintf("\n  %s Loading projects...\n", m.spinner.View())
-	case workPickProject:
-		s = m.list.View()
-	case workLoadingIssues:
-		s = fmt.Sprintf("\n  %s Loading issues for %s...\n", m.spinner.View(), m.project.Name)
-	case workPickIssue:
-		s = m.list.View()
-	case workStartingIssue:
-		s = fmt.Sprintf("\n  %s Starting issue...\n", m.spinner.View())
+	if m.err != nil {
+		s = fmt.Sprintf("\n  Error: %s\n\n  Press any key to go back.\n", m.err)
+	} else {
+		switch m.phase {
+		case workLoadingProjects:
+			s = fmt.Sprintf("\n  %s Loading projects...\n", m.spinner.View())
+		case workPickProject:
+			s = m.list.View()
+		case workLoadingIssues:
+			s = fmt.Sprintf("\n  %s Loading issues for %s...\n", m.spinner.View(), m.project.Name)
+		case workPickIssue:
+			s = m.list.View()
+		case workStartingIssue:
+			s = fmt.Sprintf("\n  %s Starting issue...\n", m.spinner.View())
+		}
 	}
 	v := tea.NewView(s)
 	v.AltScreen = true
@@ -260,7 +265,7 @@ func (m workModel) handleSelection() (tea.Model, tea.Cmd) {
 		return m, tea.Batch(
 			m.spinner.Tick,
 			func() tea.Msg {
-				return StartIssueResult(issue.Identifier, gitDirty())
+				return StartIssueResult(issue.Identifier, GitDirty())
 			},
 		)
 	}

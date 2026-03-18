@@ -3,8 +3,6 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"os/exec"
-	"strings"
 
 	"github.com/remote-remote/flow/internal/config"
 	"github.com/remote-remote/flow/internal/linear"
@@ -33,7 +31,7 @@ var workCmd = &cobra.Command{
 
 		if len(args) == 1 {
 			identifier := args[0]
-			dirty = gitWorktreeDirty()
+			dirty = tui.GitDirty()
 			result := tui.StartIssueResult(identifier, dirty)
 			if result.Err() != nil {
 				return result.Err()
@@ -59,10 +57,3 @@ var workCmd = &cobra.Command{
 	},
 }
 
-func gitWorktreeDirty() bool {
-	out, err := exec.Command("git", "status", "--porcelain").Output()
-	if err != nil {
-		return true
-	}
-	return strings.TrimSpace(string(out)) != ""
-}

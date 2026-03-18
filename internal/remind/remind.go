@@ -11,6 +11,53 @@ import (
 	"time"
 )
 
+// lockPath returns the path for the lockfile.
+func lockPath() (string, error) {
+	p, err := statePath()
+	if err != nil {
+		return "", err
+	}
+	return p + ".lock", nil
+}
+
+// acquireLock acquires an advisory file lock and returns the lock file.
+// The caller must call releaseLock when done.
+func acquireLock() (*os.File, error) {
+	lp, err := lockPath()
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(lp), 0o755); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(lp, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return nil, fmt.Errorf("open lock: %w", err)
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("flock: %w", err)
+	}
+	return f, nil
+}
+
+// releaseLock releases and closes the lock file.
+func releaseLock(f *os.File) {
+	syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	f.Close()
+}
+
+// WithLock runs fn while holding the reminders file lock.
+// Useful for external callers that need to do atomic Load+Save.
+func WithLock(fn func() error) error {
+	lk, err := acquireLock()
+	if err != nil {
+		return err
+	}
+	defer releaseLock(lk)
+	return fn()
+}
+
 type Reminder struct {
 	ID      int       `json:"id"`
 	PID     int       `json:"pid"`
@@ -62,7 +109,16 @@ func Save(reminders []Reminder) error {
 
 // Add persists a new reminder and returns its ID.
 func Add(pid int, message string, fireAt time.Time) (int, error) {
-	reminders, _ := Load()
+	lk, err := acquireLock()
+	if err != nil {
+		return 0, err
+	}
+	defer releaseLock(lk)
+
+	reminders, err := Load()
+	if err != nil {
+		return 0, err
+	}
 
 	id := 1
 	for _, r := range reminders {
@@ -83,6 +139,12 @@ func Add(pid int, message string, fireAt time.Time) (int, error) {
 
 // Remove deletes a reminder by ID.
 func Remove(id int) error {
+	lk, err := acquireLock()
+	if err != nil {
+		return err
+	}
+	defer releaseLock(lk)
+
 	reminders, err := Load()
 	if err != nil {
 		return err
@@ -98,6 +160,12 @@ func Remove(id int) error {
 
 // Cancel kills the process for a reminder and removes it.
 func Cancel(id int) error {
+	lk, err := acquireLock()
+	if err != nil {
+		return err
+	}
+	defer releaseLock(lk)
+
 	reminders, err := Load()
 	if err != nil {
 		return err
@@ -111,11 +179,24 @@ func Cancel(id int) error {
 			break
 		}
 	}
-	return Remove(id)
+	// Inline the remove logic to reuse the lock
+	filtered := reminders[:0]
+	for _, r := range reminders {
+		if r.ID != id {
+			filtered = append(filtered, r)
+		}
+	}
+	return Save(filtered)
 }
 
 // CancelAll kills all reminder processes and clears the list.
 func CancelAll() error {
+	lk, err := acquireLock()
+	if err != nil {
+		return err
+	}
+	defer releaseLock(lk)
+
 	reminders, err := Load()
 	if err != nil {
 		return err
@@ -130,6 +211,12 @@ func CancelAll() error {
 
 // Prune removes reminders whose processes are no longer running.
 func Prune() error {
+	lk, err := acquireLock()
+	if err != nil {
+		return err
+	}
+	defer releaseLock(lk)
+
 	reminders, err := Load()
 	if err != nil {
 		return err

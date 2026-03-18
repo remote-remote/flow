@@ -23,6 +23,9 @@ type MenuResult struct {
 
 	// RemindResult is set when a reminder was created inline.
 	RemindResult *RemindResult
+
+	// Err is set when a delegated sub-model encountered an error.
+	Err error
 }
 
 var docStyle = lipgloss.NewStyle().Margin(1, 2)
@@ -229,21 +232,27 @@ func (m *rootModel) isDelegateComplete() bool {
 func (m rootModel) collectDelegateResult() (tea.Model, tea.Cmd) {
 	switch sub := m.delegate.(type) {
 	case workModel:
-		if sub.selected != nil {
+		if sub.err != nil {
+			m.result = MenuResult{Err: sub.err}
+		} else if sub.selected != nil {
 			m.result = MenuResult{
 				Action:     "work:done",
 				WorkResult: &WorkResult{Issue: sub.selected, Dirty: sub.dirty},
 			}
 		}
 	case taskPickerModel:
-		if sub.selected != nil {
+		if sub.err != nil {
+			m.result = MenuResult{Err: sub.err}
+		} else if sub.selected != nil {
 			m.result = MenuResult{
 				Action: "note:task:done",
 				Issue:  sub.selected,
 			}
 		}
 	case remindModel:
-		if sub.result != nil {
+		if sub.err != nil {
+			m.result = MenuResult{Err: sub.err}
+		} else if sub.result != nil {
 			m.result = MenuResult{
 				Action:       "remind:done",
 				RemindResult: sub.result,

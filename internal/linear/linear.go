@@ -1,4 +1,4 @@
-// Package linear wraps the linear-cli binary for issue data.
+// Package linear wraps the schpet/linear-cli binary for issue data.
 package linear
 
 import (
@@ -8,10 +8,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type IssueState struct {
 	Name string `json:"name"`
+	Type string `json:"type"`
 }
 
 type Issue struct {
@@ -32,22 +34,21 @@ type Project struct {
 
 func (p Project) FilterValue() string { return p.Name }
 
-// resolveLinearCLI finds the linear-cli binary, checking common locations if not in PATH.
 func resolveLinearCLI() string {
-	if p, err := exec.LookPath("linear-cli"); err == nil {
+	if p, err := exec.LookPath("linear"); err == nil {
 		return p
 	}
-	// Check common install locations
 	home, _ := os.UserHomeDir()
 	for _, candidate := range []string{
-		filepath.Join(home, ".cargo", "bin", "linear-cli"),
-		"/usr/local/bin/linear-cli",
+		filepath.Join(home, ".cargo", "bin", "linear"),
+		"/opt/homebrew/bin/linear",
+		"/usr/local/bin/linear",
 	} {
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate
 		}
 	}
-	return "linear-cli" // fall back to PATH lookup
+	return "linear"
 }
 
 var linearCLIPath = resolveLinearCLI()
@@ -57,16 +58,36 @@ func linearCLI(args ...string) ([]byte, error) {
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("linear-cli %s: %s", strings.Join(args, " "), exitErr.Stderr)
+			return nil, fmt.Errorf("linear %s: %s", strings.Join(args, " "), exitErr.Stderr)
 		}
 		return nil, err
 	}
 	return out, nil
 }
 
+func graphQL(query string) (json.RawMessage, error) {
+	out, err := linearCLI("api", query)
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Data   json.RawMessage `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return nil, err
+	}
+	if len(resp.Errors) > 0 {
+		return nil, fmt.Errorf("linear API: %s", resp.Errors[0].Message)
+	}
+	return resp.Data, nil
+}
+
 // Projects returns all projects in the workspace.
 func Projects() ([]Project, error) {
-	out, err := linearCLI("p", "list", "--output", "json")
+	out, err := linearCLI("project", "list", "--json")
 	if err != nil {
 		return nil, err
 	}
@@ -77,35 +98,57 @@ func Projects() ([]Project, error) {
 	return projects, nil
 }
 
-// ProjectIssues returns issues for a given project name.
+// ProjectIssues returns all issues for a given project (including unassigned).
 func ProjectIssues(projectName string) ([]Issue, error) {
-	out, err := linearCLI("i", "list", "--project", projectName, "--output", "json")
+	const query = `{
+		issues(first: 50, filter: { project: { name: { eq: "%s" } }, state: { type: { in: ["started", "unstarted", "backlog", "triage"] } } }, orderBy: updatedAt) {
+			nodes { id identifier title url state { name type } }
+		}
+	}`
+	data, err := graphQL(fmt.Sprintf(query, projectName))
 	if err != nil {
 		return nil, err
 	}
-	var issues []Issue
-	if err := json.Unmarshal(out, &issues); err != nil {
+	var resp struct {
+		Issues struct {
+			Nodes []Issue `json:"nodes"`
+		} `json:"issues"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
 		return nil, err
 	}
-	return issues, nil
+	return resp.Issues.Nodes, nil
 }
 
-// AssignedIssues returns issues assigned to the current user.
+// AssignedIssues returns issues assigned to the current user in active states.
 func AssignedIssues() ([]Issue, error) {
-	out, err := linearCLI("i", "list", "--output", "json")
+	const query = `{
+		viewer {
+			assignedIssues(first: 50, filter: { state: { type: { in: ["started", "unstarted", "backlog"] } } }, orderBy: updatedAt) {
+				nodes { id identifier title url state { name type } }
+			}
+		}
+	}`
+	data, err := graphQL(query)
 	if err != nil {
 		return nil, err
 	}
-	var issues []Issue
-	if err := json.Unmarshal(out, &issues); err != nil {
+	var resp struct {
+		Viewer struct {
+			AssignedIssues struct {
+				Nodes []Issue `json:"nodes"`
+			} `json:"assignedIssues"`
+		} `json:"viewer"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
 		return nil, err
 	}
-	return issues, nil
+	return resp.Viewer.AssignedIssues.Nodes, nil
 }
 
 // IssueByIdentifier fetches a single issue by its identifier (e.g. "ENG-123").
 func IssueByIdentifier(identifier string) (*Issue, error) {
-	out, err := linearCLI("i", "get", identifier, "--output", "json")
+	out, err := linearCLI("issue", "view", identifier, "--json")
 	if err != nil {
 		return nil, err
 	}
@@ -116,34 +159,63 @@ func IssueByIdentifier(identifier string) (*Issue, error) {
 	return &issue, nil
 }
 
-// IssuesChangedSince returns issues updated within the given duration string (e.g. "1d", "3d").
-func IssuesChangedSince(since string) ([]Issue, error) {
-	out, err := linearCLI("i", "list", "--since", since, "--output", "json")
+// IssuesWorkedSince returns assigned issues that are in progress or were completed since the given time.
+func IssuesWorkedSince(since time.Time) ([]Issue, error) {
+	ts := since.Format(time.RFC3339)
+	// Two queries: currently started issues, and recently completed/canceled issues
+	query := fmt.Sprintf(`{
+		started: viewer {
+			assignedIssues(first: 50, filter: { state: { type: { eq: "started" } }, updatedAt: { gte: "%s" } }, orderBy: updatedAt) {
+				nodes { id identifier title url state { name type } }
+			}
+		}
+		completed: viewer {
+			assignedIssues(first: 50, filter: { completedAt: { gte: "%s" } }, orderBy: updatedAt) {
+				nodes { id identifier title url state { name type } }
+			}
+		}
+	}`, ts, ts)
+	data, err := graphQL(query)
 	if err != nil {
 		return nil, err
 	}
-	var issues []Issue
-	if err := json.Unmarshal(out, &issues); err != nil {
+	var resp struct {
+		Started struct {
+			AssignedIssues struct {
+				Nodes []Issue `json:"nodes"`
+			} `json:"assignedIssues"`
+		} `json:"started"`
+		Completed struct {
+			AssignedIssues struct {
+				Nodes []Issue `json:"nodes"`
+			} `json:"assignedIssues"`
+		} `json:"completed"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
 		return nil, err
+	}
+
+	// Merge and deduplicate
+	seen := make(map[string]bool)
+	var issues []Issue
+	for _, list := range [][]Issue{resp.Started.AssignedIssues.Nodes, resp.Completed.AssignedIssues.Nodes} {
+		for _, iss := range list {
+			if !seen[iss.ID] {
+				seen[iss.ID] = true
+				issues = append(issues, iss)
+			}
+		}
 	}
 	return issues, nil
 }
 
-// StartIssue sets the issue to In Progress and assigns to the current user.
-// Uses explicit update instead of `i start` which misassigns workflow state.
+// StartIssue sets the issue to In Progress, assigns to current user, and checks out a branch.
 func StartIssue(identifier string) error {
-	if _, err := linearCLI("i", "update", identifier, "-s", "In Progress"); err != nil {
-		return err
-	}
-	_, err := linearCLI("i", "assign", identifier, "me")
+	_, err := linearCLI("issue", "start", identifier)
 	return err
 }
 
-// StartIssueWithCheckout starts the issue and checks out the git branch.
+// StartIssueWithCheckout is the same as StartIssue — schpet/linear-cli always checks out.
 func StartIssueWithCheckout(identifier string) error {
-	if err := StartIssue(identifier); err != nil {
-		return err
-	}
-	_, err := linearCLI("g", "checkout", identifier)
-	return err
+	return StartIssue(identifier)
 }

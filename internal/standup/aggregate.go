@@ -35,17 +35,16 @@ func Aggregate(cfg *config.Config, date time.Time) StandupData {
 		yesterday = date.AddDate(0, 0, -3)
 	}
 
-	days := int(date.Sub(yesterday).Hours()/24) + 1
-	since := fmt.Sprintf("%dd", days)
-
 	var data StandupData
+	seenYesterday := make(map[string]bool) // track identifiers to dedup
 
-	// Linear: issues changed since yesterday
-	if issues, err := linear.IssuesChangedSince(since); err == nil {
+	// Linear: issues worked on since yesterday (in progress + recently completed)
+	if issues, err := linear.IssuesWorkedSince(yesterday); err == nil {
 		for _, iss := range issues {
+			seenYesterday[iss.Identifier] = true
 			data.Yesterday = append(data.Yesterday, Item{
 				Text:   fmt.Sprintf("[%s] %s (%s)", iss.Identifier, iss.Title, iss.State.Name),
-				URL:    resolveIssueURL(iss),
+				URL:    iss.URL,
 				Source: "linear",
 			})
 		}
@@ -54,13 +53,13 @@ func Aggregate(cfg *config.Config, date time.Time) StandupData {
 	// Linear: active/todo issues for today
 	if issues, err := linear.AssignedIssues(); err == nil {
 		for _, iss := range issues {
-			state := iss.State.Name
-			if state == "Done" || state == "Canceled" || state == "Cancelled" || state == "Duplicate" {
+			cat := iss.State.Type
+			if cat == "completed" || cat == "canceled" {
 				continue
 			}
 			data.Today = append(data.Today, Item{
 				Text:   fmt.Sprintf("[%s] %s", iss.Identifier, iss.Title),
-				URL:    resolveIssueURL(iss),
+				URL:    iss.URL,
 				Source: "linear",
 			})
 		}
@@ -77,9 +76,16 @@ func Aggregate(cfg *config.Config, date time.Time) StandupData {
 		}
 	}
 
-	// Notes: task wikilinks from yesterday's daily note
+	// Notes: task wikilinks from yesterday's daily note (skip if already seen)
 	if links := taskLinksFromDaily(cfg, yesterday); len(links) > 0 {
 		for _, link := range links {
+			id := identifierRe.FindString(link)
+			if id != "" && seenYesterday[id] {
+				continue
+			}
+			if id != "" {
+				seenYesterday[id] = true
+			}
 			data.Yesterday = append(data.Yesterday, Item{
 				Text:   link,
 				URL:    resolveURLFromText(link),
@@ -88,23 +94,21 @@ func Aggregate(cfg *config.Config, date time.Time) StandupData {
 		}
 	}
 
-	// Notes: recently modified task notes
+	// Notes: recently modified task notes (skip if already seen)
 	if items := recentTaskNotes(cfg, yesterday); len(items) > 0 {
 		for _, item := range items {
-			dup := false
-			for _, existing := range data.Yesterday {
-				if strings.Contains(existing.Text, item) {
-					dup = true
-					break
-				}
+			id := identifierRe.FindString(item)
+			if id != "" && seenYesterday[id] {
+				continue
 			}
-			if !dup {
-				data.Yesterday = append(data.Yesterday, Item{
-					Text:   item,
-					URL:    resolveURLFromText(item),
-					Source: "notes",
-				})
+			if id != "" {
+				seenYesterday[id] = true
 			}
+			data.Yesterday = append(data.Yesterday, Item{
+				Text:   item,
+				URL:    resolveURLFromText(item),
+				Source: "notes",
+			})
 		}
 	}
 
@@ -184,14 +188,6 @@ func readTaskTitle(path string) string {
 
 func TaskNotePath(vaultPath, identifier string) string {
 	return notes.TaskNotePath(vaultPath, identifier)
-}
-
-// resolveIssueURL returns the issue URL, fetching via i get if not already present.
-func resolveIssueURL(iss linear.Issue) string {
-	if iss.URL != "" {
-		return iss.URL
-	}
-	return resolveURLByIdentifier(iss.Identifier)
 }
 
 // resolveURLFromText extracts an identifier from text like "ENG-42: Fix thing" and resolves its URL.

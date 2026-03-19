@@ -11,8 +11,12 @@ type BackMsg struct{}
 // isBackKey returns true if the key should trigger navigation back.
 // Only triggers when the list is not actively filtering.
 func isBackKey(msg tea.KeyPressMsg, l list.Model) bool {
-	if msg.String() != "-" {
-		return false
+	key := msg.String()
+	if key == "esc" {
+		return l.FilterState() == list.Unfiltered
 	}
-	return l.FilterState() == list.Unfiltered
+	if key == "-" {
+		return l.FilterState() == list.Unfiltered
+	}
+	return false
 }

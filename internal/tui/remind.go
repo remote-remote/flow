@@ -130,7 +130,7 @@ func (m remindModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					Message:  message,
 				}
 				return m, nil
-			case "escape":
+			case "esc":
 				m.phase = remindPickDuration
 				return m, nil
 			}

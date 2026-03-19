@@ -24,6 +24,9 @@ type MenuResult struct {
 	// RemindResult is set when a reminder was created inline.
 	RemindResult *RemindResult
 
+	// QuickNoteTitle is set when the quick note flow completed inline.
+	QuickNoteTitle string
+
 	// Err is set when a delegated sub-model encountered an error.
 	Err error
 }
@@ -81,6 +84,7 @@ func (m *rootModel) initList() {
 		m.list.SetItems([]list.Item{
 			item{title: "Task note", key: "note:task", desc: "Open a note for a Linear task"},
 			item{title: "Daily note", key: "note:daily", desc: "Open today's daily note"},
+			item{title: "Quick note", key: "note:quick", desc: "Create a quick titled note"},
 		})
 	}
 }
@@ -126,10 +130,15 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
-		if isBackKey(msg, m.list) && m.page != "" {
-			m.page = ""
-			m.initList()
-			return m, nil
+		if isBackKey(msg, m.list) {
+			if m.page != "" {
+				m.page = ""
+				m.initList()
+				h, v := docStyle.GetFrameSize()
+				m.list.SetSize(m.width-h, m.height-v)
+				return m, nil
+			}
+			return m, tea.Quit
 		}
 		if msg.String() == "enter" || msg.String() == "space" {
 			return m.handleSelection()
@@ -154,6 +163,7 @@ func (m rootModel) handleSelection() (tea.Model, tea.Cmd) {
 		m.list.SetItems([]list.Item{
 			item{title: "Task note", key: "note:task", desc: "Open a note for a Linear task"},
 			item{title: "Daily note", key: "note:daily", desc: "Open today's daily note"},
+			item{title: "Quick note", key: "note:quick", desc: "Create a quick titled note"},
 		})
 		return m, nil
 
@@ -162,6 +172,9 @@ func (m rootModel) handleSelection() (tea.Model, tea.Cmd) {
 
 	case "note:task":
 		return m.delegateToTaskPicker()
+
+	case "note:quick":
+		return m.delegateToQuickNote()
 
 	case "remind":
 		return m.delegateToRemind()
@@ -199,6 +212,15 @@ func (m rootModel) delegateToTaskPicker() (tea.Model, tea.Cmd) {
 	return m, sub.Init()
 }
 
+func (m rootModel) delegateToQuickNote() (tea.Model, tea.Cmd) {
+	sub := newQuickNoteModel()
+	sub.width = m.width
+	sub.height = m.height
+	m.phase = rootDelegated
+	m.delegate = sub
+	return m, sub.Init()
+}
+
 func (m rootModel) delegateToRemind() (tea.Model, tea.Cmd) {
 	sub := newRemindModel()
 	sub.width = m.width
@@ -225,6 +247,8 @@ func (m *rootModel) isDelegateComplete() bool {
 		return sub.selected != nil || sub.err != nil
 	case remindModel:
 		return sub.result != nil || sub.err != nil
+	case quickNoteModel:
+		return sub.done || sub.err != nil
 	}
 	return false
 }
@@ -256,6 +280,15 @@ func (m rootModel) collectDelegateResult() (tea.Model, tea.Cmd) {
 			m.result = MenuResult{
 				Action:       "remind:done",
 				RemindResult: sub.result,
+			}
+		}
+	case quickNoteModel:
+		if sub.err != nil {
+			m.result = MenuResult{Err: sub.err}
+		} else if sub.done {
+			m.result = MenuResult{
+				Action:         "note:quick:done",
+				QuickNoteTitle: sub.title,
 			}
 		}
 	}

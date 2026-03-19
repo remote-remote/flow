@@ -275,10 +275,12 @@ func StartIssue(identifier string) error {
 	return err
 }
 
-// StartIssueWithCheckout starts the issue (sets state + assigns) and checks out a branch.
+// StartIssueWithCheckout sets state + assigns and checks out the branch.
 func StartIssueWithCheckout(identifier string) error {
-	_, err := linearCLI("issue", "start", identifier)
-	return err
+	if err := StartIssue(identifier); err != nil {
+		return err
+	}
+	return CheckoutBranch(identifier)
 }
 
 // CheckoutBranch checks out the git branch for an issue without changing its state.

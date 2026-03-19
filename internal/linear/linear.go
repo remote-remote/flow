@@ -271,7 +271,7 @@ func IssuesWorkedSince(since time.Time) ([]Issue, error) {
 // StartIssue sets the issue to In Progress and assigns to the current user
 // without any git operations.
 func StartIssue(identifier string) error {
-	_, err := linearCLI("issue", "update", identifier, "--state", "In Progress", "--assign-to-me")
+	_, err := linearCLI("issue", "update", identifier, "--state", "In Progress", "--assignee", "self")
 	return err
 }
 

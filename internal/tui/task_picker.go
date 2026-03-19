@@ -100,7 +100,7 @@ func (m taskPickerModel) Init() tea.Cmd {
 	return tea.Batch(
 		m.spinner.Tick,
 		func() tea.Msg {
-			issues, err := linear.AssignedIssues()
+			issues, err := linear.RecentIssues()
 			return assignedLoadedMsg{issues: issues, err: err}
 		},
 	)

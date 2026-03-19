@@ -21,6 +21,7 @@ type Issue struct {
 	Identifier string     `json:"identifier"`
 	Title      string     `json:"title"`
 	URL        string     `json:"url"`
+	BranchName string     `json:"branchName"`
 	State      IssueState `json:"state"`
 }
 
@@ -155,6 +156,55 @@ func AssignedIssues() ([]Issue, error) {
 	return resp.Viewer.AssignedIssues.Nodes, nil
 }
 
+// RecentIssues returns issues assigned to the current user that were recently active
+// (in progress, or updated in the last few days), including completed ones.
+func RecentIssues() ([]Issue, error) {
+	since := time.Now().AddDate(0, 0, -3).Format(time.RFC3339)
+	query := fmt.Sprintf(`{
+		active: viewer {
+			assignedIssues(first: 50, filter: { state: { type: { in: ["started", "unstarted"] } } }, orderBy: updatedAt) {
+				nodes { id identifier title url state { name type } }
+			}
+		}
+		recent: viewer {
+			assignedIssues(first: 50, filter: { updatedAt: { gte: "%s" } }, orderBy: updatedAt) {
+				nodes { id identifier title url state { name type } }
+			}
+		}
+	}`, since)
+	data, err := graphQL(query)
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Active struct {
+			AssignedIssues struct {
+				Nodes []Issue `json:"nodes"`
+			} `json:"assignedIssues"`
+		} `json:"active"`
+		Recent struct {
+			AssignedIssues struct {
+				Nodes []Issue `json:"nodes"`
+			} `json:"assignedIssues"`
+		} `json:"recent"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]bool)
+	var issues []Issue
+	for _, list := range [][]Issue{resp.Active.AssignedIssues.Nodes, resp.Recent.AssignedIssues.Nodes} {
+		for _, iss := range list {
+			if !seen[iss.ID] {
+				seen[iss.ID] = true
+				issues = append(issues, iss)
+			}
+		}
+	}
+	return issues, nil
+}
+
 // IssueByIdentifier fetches a single issue by its identifier (e.g. "ENG-123").
 func IssueByIdentifier(identifier string) (*Issue, error) {
 	out, err := linearCLI("issue", "view", identifier, "--json")
@@ -219,15 +269,31 @@ func IssuesWorkedSince(since time.Time) ([]Issue, error) {
 }
 
 // StartIssue sets the issue to In Progress and assigns to the current user
-// without any git operations. Used when the worktree is dirty.
+// without any git operations.
 func StartIssue(identifier string) error {
 	_, err := linearCLI("issue", "update", identifier, "--state", "In Progress", "--assign-to-me")
 	return err
 }
 
 // StartIssueWithCheckout starts the issue (sets state + assigns) and checks out a branch.
-// Used when the worktree is clean.
 func StartIssueWithCheckout(identifier string) error {
 	_, err := linearCLI("issue", "start", identifier)
 	return err
+}
+
+// CheckoutBranch checks out the git branch for an issue without changing its state.
+func CheckoutBranch(identifier string) error {
+	// Get the branch name from issue view
+	issue, err := IssueByIdentifier(identifier)
+	if err != nil {
+		return err
+	}
+	if issue.BranchName == "" {
+		return fmt.Errorf("no branch found for %s", identifier)
+	}
+	cmd := exec.Command("git", "checkout", issue.BranchName)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git checkout: %s", out)
+	}
+	return nil
 }

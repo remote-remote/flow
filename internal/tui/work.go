@@ -28,6 +28,7 @@ const (
 	workLoadingIssues
 	workPickIssue
 	workStartingIssue
+	workDirtyPrompt
 )
 
 type projectsLoadedMsg struct {
@@ -58,6 +59,7 @@ type workModel struct {
 	err          error
 	width        int
 	height       int
+	pendingIssue string // identifier waiting for dirty resolution
 }
 
 type WorkResult struct {
@@ -92,17 +94,20 @@ func RunWorkFlow() (*WorkResult, error) {
 
 // StartIssueResult creates an IssueStartedMsg — exported for use by cmd layer.
 func StartIssueResult(identifier string, dirty bool) IssueStartedMsg {
-	var startErr error
 	if dirty {
-		startErr = linear.StartIssue(identifier)
-	} else {
-		startErr = linear.StartIssueWithCheckout(identifier)
+		// Don't attempt checkout — just set state and assign
+		linear.StartIssue(identifier)
+		issue, err := linear.IssueByIdentifier(identifier)
+		return IssueStartedMsg{issue: issue, dirty: true, err: err}
 	}
+
+	// Clean worktree — start with checkout
+	startErr := linear.StartIssueWithCheckout(identifier)
 	issue, err := linear.IssueByIdentifier(identifier)
 	if err != nil && startErr == nil {
 		startErr = err
 	}
-	return IssueStartedMsg{issue: issue, dirty: dirty, err: startErr}
+	return IssueStartedMsg{issue: issue, dirty: false, err: startErr}
 }
 
 func (m IssueStartedMsg) Issue() *linear.Issue { return m.issue }
@@ -135,6 +140,11 @@ func (m workModel) View() tea.View {
 			s = m.list.View()
 		case workStartingIssue:
 			s = fmt.Sprintf("\n  %s Starting issue...\n", m.spinner.View())
+		case workDirtyPrompt:
+			s = fmt.Sprintf("\n  Worktree has uncommitted changes.\n\n")
+			s += "  [s] Stash and checkout branch\n"
+			s += "  [c] Continue without checkout\n"
+			s += "  [q] Cancel\n"
 		}
 	}
 	v := tea.NewView(s)
@@ -155,6 +165,15 @@ func (m workModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
+		}
+
+		// Error state — any key goes back
+		if m.err != nil {
+			return m, func() tea.Msg { return BackMsg{} }
+		}
+
+		if m.phase == workDirtyPrompt {
+			return m.handleDirtyChoice(msg.String())
 		}
 
 		if m.phase == workPickProject || m.phase == workPickIssue {
@@ -225,6 +244,46 @@ func (m workModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m workModel) handleDirtyChoice(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "s":
+		// Stash and checkout
+		m.phase = workStartingIssue
+		identifier := m.pendingIssue
+		return m, tea.Batch(
+			m.spinner.Tick,
+			func() tea.Msg {
+				// Stash
+				if out, err := exec.Command("git", "stash", "push", "-m", "flow: auto-stash for "+identifier).CombinedOutput(); err != nil {
+					return IssueStartedMsg{err: fmt.Errorf("git stash: %s", out)}
+				}
+				// Now checkout
+				startErr := linear.StartIssueWithCheckout(identifier)
+				issue, err := linear.IssueByIdentifier(identifier)
+				if err != nil && startErr == nil {
+					startErr = err
+				}
+				return IssueStartedMsg{issue: issue, dirty: false, err: startErr}
+			},
+		)
+	case "c":
+		// Continue without checkout
+		m.phase = workStartingIssue
+		identifier := m.pendingIssue
+		return m, tea.Batch(
+			m.spinner.Tick,
+			func() tea.Msg {
+				linear.StartIssue(identifier)
+				issue, err := linear.IssueByIdentifier(identifier)
+				return IssueStartedMsg{issue: issue, dirty: true, err: err}
+			},
+		)
+	case "q":
+		return m, func() tea.Msg { return BackMsg{} }
+	}
+	return m, nil
+}
+
 func (m workModel) handleBack() (tea.Model, tea.Cmd) {
 	switch m.phase {
 	case workPickIssue:
@@ -261,11 +320,18 @@ func (m workModel) handleSelection() (tea.Model, tea.Cmd) {
 		)
 	case workPickIssue:
 		issue := sel.(issueItem).issue
+		m.pendingIssue = issue.Identifier
+
+		if GitDirty() {
+			m.phase = workDirtyPrompt
+			return m, nil
+		}
+
 		m.phase = workStartingIssue
 		return m, tea.Batch(
 			m.spinner.Tick,
 			func() tea.Msg {
-				return StartIssueResult(issue.Identifier, GitDirty())
+				return StartIssueResult(issue.Identifier, false)
 			},
 		)
 	}

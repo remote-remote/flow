@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -14,7 +15,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var issueIDRe = regexp.MustCompile(`[A-Z]+-\d+`)
+var issueIDRe = regexp.MustCompile(`(?i)[A-Z]+-\d+`)
 
 var taskNote = &cobra.Command{
 	Use:   "task [identifier]",
@@ -30,12 +31,26 @@ var taskNote = &cobra.Command{
 			return err
 		}
 
+		// Try to resolve identifier from args or branch
+		var identifier string
+		if len(args) == 1 {
+			identifier = strings.ToUpper(args[0])
+		} else {
+			identifier = identifierFromBranch()
+		}
+
+		// If we have an identifier and the note already exists, skip the API call
+		if identifier != "" {
+			notePath := notes.TaskNotePath(cfg.VaultPath, identifier)
+			if _, err := os.Stat(notePath); err == nil {
+				return notes.OpenExistingTask(notePath)
+			}
+		}
+
 		var issue *linear.Issue
 
-		if len(args) == 1 {
-			issue, err = tui.RunTaskPickerForIdentifier(args[0])
-		} else if id := identifierFromBranch(); id != "" {
-			issue, err = tui.RunTaskPickerForIdentifier(id)
+		if identifier != "" {
+			issue, err = tui.RunTaskPickerForIdentifier(identifier)
 		} else {
 			issue, err = tui.RunTaskPicker()
 		}
@@ -57,5 +72,5 @@ func identifierFromBranch() string {
 		return ""
 	}
 	branch := strings.TrimSpace(string(out))
-	return issueIDRe.FindString(branch)
+	return strings.ToUpper(issueIDRe.FindString(branch))
 }

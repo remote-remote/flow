@@ -46,6 +46,19 @@ func OpenTask(cfg *config.Config, issue *linear.Issue) error {
 	return cmd.Run()
 }
 
+// OpenExistingTask opens a task note that already exists on disk.
+func OpenExistingTask(path string) error {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vim"
+	}
+	cmd := exec.Command(editor, path)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 func TaskNotePath(vaultPath, identifier string) string {
 	return filepath.Join(vaultPath, "Tasks", identifier+".md")
 }

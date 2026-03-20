@@ -140,7 +140,7 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		}
-		if msg.String() == "enter" || msg.String() == "space" {
+		if (msg.String() == "enter" || msg.String() == "space") && m.list.FilterState() != list.Filtering {
 			return m.handleSelection()
 		}
 	}

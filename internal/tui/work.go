@@ -180,7 +180,7 @@ func (m workModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if isBackKey(msg, m.list) {
 				return m.handleBack()
 			}
-			if msg.String() == "enter" {
+			if msg.String() == "enter" && m.list.FilterState() != list.Filtering {
 				return m.handleSelection()
 			}
 			var cmd tea.Cmd
@@ -239,6 +239,14 @@ func (m workModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.selected = msg.issue
 		m.dirty = msg.dirty
 		return m, nil
+
+	default:
+		// Forward unhandled messages (e.g. FilterMatchesMsg) to the list
+		if m.phase == workPickProject || m.phase == workPickIssue {
+			var cmd tea.Cmd
+			m.list, cmd = m.list.Update(msg)
+			return m, cmd
+		}
 	}
 
 	return m, nil

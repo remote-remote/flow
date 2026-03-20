@@ -143,7 +143,7 @@ func (m taskPickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if isBackKey(msg, m.list) {
 				return m, func() tea.Msg { return BackMsg{} }
 			}
-			if msg.String() == "enter" {
+			if msg.String() == "enter" && m.list.FilterState() != list.Filtering {
 				if sel := m.list.SelectedItem(); sel != nil {
 					issue := sel.(issueItem).issue
 					m.phase = taskFetchingDetails
@@ -190,6 +190,14 @@ func (m taskPickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.selected = msg.issue
 		return m, nil
+
+	default:
+		// Forward unhandled messages (e.g. FilterMatchesMsg) to the list
+		if m.phase == taskPicking {
+			var cmd tea.Cmd
+			m.list, cmd = m.list.Update(msg)
+			return m, cmd
+		}
 	}
 
 	return m, nil

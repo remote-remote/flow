@@ -14,5 +14,7 @@ date: %s
 ## Tasks
 
 ## Notes
+
+## Standup
 `, date.Format("2006-01-02"), date.Format("Monday, January 2, 2006"))
 }

@@ -16,13 +16,18 @@ type IssueState struct {
 	Type string `json:"type"`
 }
 
+type IssueProject struct {
+	Name string `json:"name"`
+}
+
 type Issue struct {
-	ID         string     `json:"id"`
-	Identifier string     `json:"identifier"`
-	Title      string     `json:"title"`
-	URL        string     `json:"url"`
-	BranchName string     `json:"branchName"`
-	State      IssueState `json:"state"`
+	ID         string        `json:"id"`
+	Identifier string        `json:"identifier"`
+	Title      string        `json:"title"`
+	URL        string        `json:"url"`
+	BranchName string        `json:"branchName"`
+	State      IssueState    `json:"state"`
+	Project    *IssueProject `json:"project,omitempty"`
 }
 
 func (i Issue) FilterValue() string { return i.Identifier + " " + i.Title }
@@ -112,7 +117,7 @@ func Projects() ([]Project, error) {
 func ProjectIssues(projectName string) ([]Issue, error) {
 	const query = `query($name: String!) {
 		issues(first: 50, filter: { project: { name: { eq: $name } }, state: { type: { in: ["started", "unstarted", "backlog", "triage"] } } }, orderBy: updatedAt) {
-			nodes { id identifier title url state { name type } }
+			nodes { id identifier title url state { name type } project { name } }
 		}
 	}`
 	data, err := graphQLWithVars(query, map[string]string{"name": projectName})
@@ -135,7 +140,7 @@ func AssignedIssues() ([]Issue, error) {
 	const query = `{
 		viewer {
 			assignedIssues(first: 50, filter: { state: { type: { in: ["started", "unstarted", "backlog"] } } }, orderBy: updatedAt) {
-				nodes { id identifier title url state { name type } }
+				nodes { id identifier title url state { name type } project { name } }
 			}
 		}
 	}`
@@ -163,12 +168,12 @@ func RecentIssues() ([]Issue, error) {
 	query := fmt.Sprintf(`{
 		active: viewer {
 			assignedIssues(first: 50, filter: { state: { type: { in: ["started", "unstarted"] } } }, orderBy: updatedAt) {
-				nodes { id identifier title url state { name type } }
+				nodes { id identifier title url state { name type } project { name } }
 			}
 		}
 		recent: viewer {
 			assignedIssues(first: 50, filter: { updatedAt: { gte: "%s" } }, orderBy: updatedAt) {
-				nodes { id identifier title url state { name type } }
+				nodes { id identifier title url state { name type } project { name } }
 			}
 		}
 	}`, since)
@@ -225,12 +230,12 @@ func IssuesWorkedSince(since time.Time) ([]Issue, error) {
 	query := fmt.Sprintf(`{
 		started: viewer {
 			assignedIssues(first: 50, filter: { state: { type: { eq: "started" } }, updatedAt: { gte: "%s" } }, orderBy: updatedAt) {
-				nodes { id identifier title url state { name type } }
+				nodes { id identifier title url state { name type } project { name } }
 			}
 		}
 		completed: viewer {
 			assignedIssues(first: 50, filter: { completedAt: { gte: "%s" } }, orderBy: updatedAt) {
-				nodes { id identifier title url state { name type } }
+				nodes { id identifier title url state { name type } project { name } }
 			}
 		}
 	}`, ts, ts)

@@ -187,7 +187,7 @@ func readTaskTitle(path string) string {
 }
 
 func TaskNotePath(vaultPath, identifier string) string {
-	return notes.TaskNotePath(vaultPath, identifier)
+	return notes.TaskNotePathByID(vaultPath, identifier)
 }
 
 // resolveURLFromText extracts an identifier from text like "ENG-42: Fix thing" and resolves its URL.

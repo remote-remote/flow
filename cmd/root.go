@@ -65,6 +65,8 @@ var rootCommand = &cobra.Command{
 			tuiSelection = "config"
 		case "note:daily":
 			tuiSelection = "note:daily"
+		case "note:project":
+			tuiSelection = "note:project"
 		case "note:quick:done":
 			return notes.OpenQuick(cfg, result.QuickNoteTitle)
 		}

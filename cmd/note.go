@@ -31,6 +31,8 @@ var noteCmd = &cobra.Command{
 				return err
 			}
 			return notes.OpenQuick(cfg, result.QuickNoteTitle)
+		case "note:project":
+			return projectNote.RunE(cmd, nil)
 		}
 
 		return nil
@@ -41,4 +43,5 @@ func init() {
 	noteCmd.AddCommand(taskNote)
 	noteCmd.AddCommand(dailyNote)
 	noteCmd.AddCommand(quickNote)
+	noteCmd.AddCommand(projectNote)
 }

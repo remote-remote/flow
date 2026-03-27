@@ -27,6 +27,9 @@ type MenuResult struct {
 	// QuickNoteTitle is set when the quick note flow completed inline.
 	QuickNoteTitle string
 
+	// ProjectName is set when a project was selected.
+	ProjectName string
+
 	// Err is set when a delegated sub-model encountered an error.
 	Err error
 }
@@ -83,6 +86,7 @@ func (m *rootModel) initList() {
 	case "note":
 		m.list.SetItems([]list.Item{
 			item{title: "Task note", key: "note:task", desc: "Open a note for a Linear task"},
+			item{title: "Project note", key: "note:project", desc: "Open a project note"},
 			item{title: "Daily note", key: "note:daily", desc: "Open today's daily note"},
 			item{title: "Quick note", key: "note:quick", desc: "Create a quick titled note"},
 		})
@@ -162,6 +166,7 @@ func (m rootModel) handleSelection() (tea.Model, tea.Cmd) {
 		m.page = "note"
 		m.list.SetItems([]list.Item{
 			item{title: "Task note", key: "note:task", desc: "Open a note for a Linear task"},
+			item{title: "Project note", key: "note:project", desc: "Open a project note"},
 			item{title: "Daily note", key: "note:daily", desc: "Open today's daily note"},
 			item{title: "Quick note", key: "note:quick", desc: "Create a quick titled note"},
 		})

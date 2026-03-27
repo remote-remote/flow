@@ -41,7 +41,7 @@ var taskNote = &cobra.Command{
 
 		// If we have an identifier and the note already exists, skip the API call
 		if identifier != "" {
-			notePath := notes.TaskNotePath(cfg.VaultPath, identifier)
+			notePath := notes.TaskNotePathByID(cfg.VaultPath, identifier)
 			if _, err := os.Stat(notePath); err == nil {
 				return notes.OpenExistingTask(notePath)
 			}

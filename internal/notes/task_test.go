@@ -12,10 +12,20 @@ import (
 )
 
 func TestTaskNotePath(t *testing.T) {
-	got := TaskNotePath("/vault", "ENG-123")
+	// Without project — falls back to flat Tasks/ dir
+	issue := &linear.Issue{Identifier: "ENG-123"}
+	got := TaskNotePath("/vault", issue)
 	want := filepath.Join("/vault", "Tasks", "ENG-123.md")
 	if got != want {
-		t.Errorf("TaskNotePath = %q, want %q", got, want)
+		t.Errorf("TaskNotePath (no project) = %q, want %q", got, want)
+	}
+
+	// With project — uses Projects/{name}/Tasks/
+	issue.Project = &linear.IssueProject{Name: "Flow"}
+	got = TaskNotePath("/vault", issue)
+	want = filepath.Join("/vault", "Projects", "Flow", "Tasks", "ENG-123.md")
+	if got != want {
+		t.Errorf("TaskNotePath (with project) = %q, want %q", got, want)
 	}
 }
 

@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"time"
 
+	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/remote-remote/flow/internal/remind"
 )
 
@@ -13,15 +15,22 @@ type remindPhase int
 
 const (
 	remindPickDuration remindPhase = iota
-	remindInputMessage
 	remindInputCustom
+	remindInputMessage
 )
+
+type durationItem struct {
+	label    string
+	duration time.Duration
+}
+
+func (i durationItem) Title() string       { return i.label }
+func (i durationItem) Description() string { return "" }
+func (i durationItem) FilterValue() string { return i.label }
 
 type remindModel struct {
 	phase     remindPhase
-	durations []time.Duration
-	labels    []string
-	cursor    int
+	list      list.Model
 	input     textinput.Model
 	custom    textinput.Model
 	duration  time.Duration
@@ -38,32 +47,59 @@ type RemindResult struct {
 }
 
 func newRemindModel() remindModel {
+	placeholderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("248"))
+
 	ti := textinput.New()
 	ti.Prompt = ""
-	ti.Placeholder = ""
+	ti.Placeholder = "check deployment, standup, etc."
 	ti.CharLimit = 100
+	ti.SetWidth(60)
+	tiStyles := ti.Styles()
+	tiStyles.Focused.Placeholder = placeholderStyle
+	tiStyles.Blurred.Placeholder = placeholderStyle
+	ti.SetStyles(tiStyles)
 	ti.Blur()
 
 	ci := textinput.New()
 	ci.Prompt = ""
 	ci.Placeholder = "e.g. 30m, 1h30m, 3:30pm, 15:04"
 	ci.CharLimit = 20
+	ci.SetWidth(40)
+	ciStyles := ci.Styles()
+	ciStyles.Focused.Placeholder = placeholderStyle
+	ciStyles.Blurred.Placeholder = placeholderStyle
+	ci.SetStyles(ciStyles)
 	ci.Blur()
+
+	items := []list.Item{
+		durationItem{label: "5 minutes", duration: 5 * time.Minute},
+		durationItem{label: "10 minutes", duration: 10 * time.Minute},
+		durationItem{label: "15 minutes", duration: 15 * time.Minute},
+		durationItem{label: "30 minutes", duration: 30 * time.Minute},
+		durationItem{label: "1 hour", duration: 1 * time.Hour},
+		durationItem{label: "Custom...", duration: 0},
+	}
+
+	d := list.NewDefaultDelegate()
+	d.ShowDescription = false
+	l := list.New(items, d, 0, 0)
+	l.Title = "Set Reminder"
+	l.SetShowStatusBar(false)
+	l.SetFilteringEnabled(false)
 
 	return remindModel{
 		phase:  remindPickDuration,
+		list:   l,
 		input:  ti,
 		custom: ci,
-		durations: []time.Duration{
-			5 * time.Minute,
-			10 * time.Minute,
-			15 * time.Minute,
-			30 * time.Minute,
-			1 * time.Hour,
-			0, // sentinel for "Custom"
-		},
-		labels: []string{"5m", "10m", "15m", "30m", "1h", "Custom..."},
 	}
+}
+
+func (m *remindModel) setSize(w, h int) {
+	m.width = w
+	m.height = h
+	dh, dv := docStyle.GetFrameSize()
+	m.list.SetSize(w-dh, h-dv)
 }
 
 func (m remindModel) Init() tea.Cmd {
@@ -75,15 +111,7 @@ func (m remindModel) View() tea.View {
 
 	switch m.phase {
 	case remindPickDuration:
-		s = "\n  Set Reminder\n\n"
-		for i, label := range m.labels {
-			cursor := "  "
-			if i == m.cursor {
-				cursor = "> "
-			}
-			s += fmt.Sprintf("  %s%s\n", cursor, label)
-		}
-		s += "\n  j/k to move, enter to select, - to go back\n"
+		s = docStyle.Render(m.list.View())
 
 	case remindInputCustom:
 		s = "\n  Set Reminder — Custom Time\n\n"
@@ -107,8 +135,7 @@ func (m remindModel) View() tea.View {
 func (m remindModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
+		m.setSize(msg.Width, msg.Height)
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -118,30 +145,25 @@ func (m remindModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch m.phase {
 		case remindPickDuration:
-			switch msg.String() {
-			case "j", "down":
-				if m.cursor < len(m.durations)-1 {
-					m.cursor++
+			if isBackKey(msg, m.list) {
+				return m, func() tea.Msg { return BackMsg{} }
+			}
+			if msg.String() == "enter" || msg.String() == "space" {
+				sel := m.list.SelectedItem()
+				if sel == nil {
+					return m, nil
 				}
-			case "k", "up":
-				if m.cursor > 0 {
-					m.cursor--
-				}
-			case "enter":
-				if m.durations[m.cursor] == 0 {
-					// Custom option
+				di := sel.(durationItem)
+				if di.duration == 0 {
 					m.phase = remindInputCustom
 					m.custom.Focus()
 					return m, nil
 				}
-				m.duration = m.durations[m.cursor]
+				m.duration = di.duration
 				m.phase = remindInputMessage
 				m.input.Focus()
 				return m, nil
-			case "-":
-				return m, func() tea.Msg { return BackMsg{} }
 			}
-			return m, nil
 
 		case remindInputCustom:
 			switch msg.String() {
@@ -185,8 +207,12 @@ func (m remindModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Forward to active text input
+	// Forward to active sub-component
 	switch m.phase {
+	case remindPickDuration:
+		var cmd tea.Cmd
+		m.list, cmd = m.list.Update(msg)
+		return m, cmd
 	case remindInputMessage:
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)

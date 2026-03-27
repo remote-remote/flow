@@ -223,8 +223,7 @@ func (m rootModel) delegateToQuickNote() (tea.Model, tea.Cmd) {
 
 func (m rootModel) delegateToRemind() (tea.Model, tea.Cmd) {
 	sub := newRemindModel()
-	sub.width = m.width
-	sub.height = m.height
+	sub.setSize(m.width, m.height)
 	m.phase = rootDelegated
 	m.delegate = sub
 	return m, sub.Init()

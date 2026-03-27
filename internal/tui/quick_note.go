@@ -83,7 +83,7 @@ func (m quickNoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			m.title = m.input.Value()
 			m.done = true
-			return m, nil
+			return m, tea.Quit
 		case "esc":
 			return m, func() tea.Msg { return BackMsg{} }
 		}

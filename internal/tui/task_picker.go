@@ -83,9 +83,12 @@ func RunTaskPickerForIdentifier(identifier string) (*linear.Issue, error) {
 	return fm.selected, nil
 }
 
-func fetchIssueDetail(identifier string) tea.Cmd {
+func fetchIssueDetail(identifier string, project *linear.IssueProject) tea.Cmd {
 	return func() tea.Msg {
 		issue, err := linear.IssueByIdentifier(identifier)
+		if err == nil && issue != nil && issue.Project == nil && project != nil {
+			issue.Project = project
+		}
 		return issueDetailMsg{issue: issue, err: err}
 	}
 }
@@ -94,7 +97,7 @@ func (m taskPickerModel) Init() tea.Cmd {
 	if m.identifier != "" {
 		return tea.Batch(
 			m.spinner.Tick,
-			fetchIssueDetail(m.identifier),
+			fetchIssueDetail(m.identifier, nil),
 		)
 	}
 	return tea.Batch(
@@ -149,7 +152,7 @@ func (m taskPickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.phase = taskFetchingDetails
 					return m, tea.Batch(
 						m.spinner.Tick,
-						fetchIssueDetail(issue.Identifier),
+						fetchIssueDetail(issue.Identifier, issue.Project),
 					)
 				}
 				return m, nil

@@ -32,7 +32,7 @@ var workCmd = &cobra.Command{
 		if len(args) == 1 {
 			identifier := args[0]
 			dirty = tui.GitDirty()
-			result := tui.StartIssueResult(identifier, dirty)
+			result := tui.StartIssueResult(identifier, dirty, nil)
 			if result.Err() != nil {
 				return result.Err()
 			}

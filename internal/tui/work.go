@@ -93,19 +93,41 @@ func RunWorkFlow() (*WorkResult, error) {
 }
 
 // StartIssueResult creates an IssueStartedMsg — exported for use by cmd layer.
-func StartIssueResult(identifier string, dirty bool) IssueStartedMsg {
+func StartIssueResult(identifier string, dirty bool, project *linear.IssueProject) IssueStartedMsg {
 	if dirty {
 		// Don't attempt checkout — just set state and assign
 		linear.StartIssue(identifier)
 		issue, err := linear.IssueByIdentifier(identifier)
+		if err == nil && issue != nil && issue.Project == nil && project != nil {
+			issue.Project = project
+		}
 		return IssueStartedMsg{issue: issue, dirty: true, err: err}
 	}
 
-	// Clean worktree — start with checkout
-	startErr := linear.StartIssueWithCheckout(identifier)
+	// Check if branch already exists — if so, just checkout and update state
+	// (linear issue start prompts interactively for existing branches)
 	issue, err := linear.IssueByIdentifier(identifier)
-	if err != nil && startErr == nil {
-		startErr = err
+	if err != nil {
+		return IssueStartedMsg{err: err}
+	}
+	if issue.Project == nil && project != nil {
+		issue.Project = project
+	}
+
+	var startErr error
+	if issue.BranchName != "" && linear.BranchExists(issue.BranchName) {
+		linear.StartIssue(identifier)
+		startErr = linear.CheckoutBranch(identifier)
+	} else {
+		startErr = linear.StartIssueWithCheckout(identifier)
+		// Re-fetch to get branch name
+		issue, err = linear.IssueByIdentifier(identifier)
+		if err != nil && startErr == nil {
+			startErr = err
+		}
+		if issue != nil && issue.Project == nil && project != nil {
+			issue.Project = project
+		}
 	}
 	return IssueStartedMsg{issue: issue, dirty: false, err: startErr}
 }
@@ -253,6 +275,10 @@ func (m workModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m workModel) handleDirtyChoice(key string) (tea.Model, tea.Cmd) {
+	var ip *linear.IssueProject
+	if m.project != nil {
+		ip = &linear.IssueProject{Name: m.project.Name}
+	}
 	switch key {
 	case "s":
 		// Stash and checkout
@@ -265,11 +291,20 @@ func (m workModel) handleDirtyChoice(key string) (tea.Model, tea.Cmd) {
 				if out, err := exec.Command("git", "stash", "push", "-m", "flow: auto-stash for "+identifier).CombinedOutput(); err != nil {
 					return IssueStartedMsg{err: fmt.Errorf("git stash: %s", out)}
 				}
-				// Now checkout
-				startErr := linear.StartIssueWithCheckout(identifier)
+				// Now checkout — check for existing branch first
 				issue, err := linear.IssueByIdentifier(identifier)
-				if err != nil && startErr == nil {
-					startErr = err
+				if err != nil {
+					return IssueStartedMsg{err: err}
+				}
+				if issue.Project == nil && ip != nil {
+					issue.Project = ip
+				}
+				var startErr error
+				if issue.BranchName != "" && linear.BranchExists(issue.BranchName) {
+					linear.StartIssue(identifier)
+					startErr = linear.CheckoutBranch(identifier)
+				} else {
+					startErr = linear.StartIssueWithCheckout(identifier)
 				}
 				return IssueStartedMsg{issue: issue, dirty: false, err: startErr}
 			},
@@ -283,6 +318,9 @@ func (m workModel) handleDirtyChoice(key string) (tea.Model, tea.Cmd) {
 			func() tea.Msg {
 				linear.StartIssue(identifier)
 				issue, err := linear.IssueByIdentifier(identifier)
+				if err == nil && issue != nil && issue.Project == nil && ip != nil {
+					issue.Project = ip
+				}
 				return IssueStartedMsg{issue: issue, dirty: true, err: err}
 			},
 		)
@@ -335,11 +373,16 @@ func (m workModel) handleSelection() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		project := m.project
 		m.phase = workStartingIssue
 		return m, tea.Batch(
 			m.spinner.Tick,
 			func() tea.Msg {
-				return StartIssueResult(issue.Identifier, false)
+				var ip *linear.IssueProject
+				if project != nil {
+					ip = &linear.IssueProject{Name: project.Name}
+				}
+				return StartIssueResult(issue.Identifier, false, ip)
 			},
 		)
 	}

@@ -287,6 +287,12 @@ func StartIssueWithCheckout(identifier string) error {
 	return err
 }
 
+// BranchExists checks if a git branch exists locally.
+func BranchExists(branch string) bool {
+	err := exec.Command("git", "rev-parse", "--verify", branch).Run()
+	return err == nil
+}
+
 // CheckoutBranch checks out an existing git branch for an issue (for resuming work).
 func CheckoutBranch(identifier string) error {
 	issue, err := IssueByIdentifier(identifier)

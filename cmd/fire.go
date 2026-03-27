@@ -14,16 +14,20 @@ import (
 
 // _fire is a hidden command used by remind to fire a popup after sleeping.
 var fireCmd = &cobra.Command{
-	Use:    "_fire <unix_timestamp> <message>",
+	Use:    "_fire <unix_timestamp> <duration_secs> <message>",
 	Hidden: true,
-	Args:   cobra.MinimumNArgs(2),
+	Args:   cobra.MinimumNArgs(3),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ts, err := strconv.ParseInt(args[0], 10, 64)
 		if err != nil {
 			return err
 		}
+		durSecs, err := strconv.ParseInt(args[1], 10, 64)
+		if err != nil {
+			return err
+		}
 		fireAt := time.Unix(ts, 0)
-		message := strings.Join(args[1:], " ")
+		message := strings.Join(args[2:], " ")
 
 		// Sleep until fire time
 		remaining := time.Until(fireAt)
@@ -33,21 +37,18 @@ var fireCmd = &cobra.Command{
 
 		// Check if tmux is running
 		if err := exec.Command("tmux", "info").Run(); err != nil {
-			// tmux not running, exit silently
 			return nil
 		}
 
-		// Find our own executable for the popup command
 		self, err := selfExecutable()
 		if err != nil {
 			return err
 		}
 
-		// Fire tmux popup
-		popupCmd := fmt.Sprintf("%s _popup reminder %q", self, message)
-		exec.Command("tmux", "display-popup", "-E", "-w", "60", "-h", "10", popupCmd).Run()
+		// Fire tmux popup with duration info
+		popupCmd := fmt.Sprintf("%s _popup reminder %d %q", self, durSecs, message)
+		exec.Command("tmux", "display-popup", "-E", "-w", "50", "-h", "16", popupCmd).Run()
 
-		// Clean up: remove ourselves from the reminders list
 		cleanupFiredReminder(message)
 
 		return nil
@@ -61,16 +62,45 @@ var popupCmd = &cobra.Command{
 }
 
 var popupReminderCmd = &cobra.Command{
-	Use:    "reminder <message>",
+	Use:    "reminder <duration_secs> <message>",
 	Hidden: true,
-	Args:   cobra.ExactArgs(1),
+	Args:   cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		message := args[0]
-		fmt.Printf("\n  ⏰ Reminder\n\n  %s\n\n", message)
-		fmt.Println("  [d] Dismiss")
-		fmt.Println("  [1] Snooze 5m")
-		fmt.Println("  [2] Snooze 10m")
-		fmt.Println("  [3] Snooze 15m")
+		durSecs, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
+			return err
+		}
+		origDur := time.Duration(durSecs) * time.Second
+		message := args[1]
+
+		// Box drawing popup
+		w := 46
+		border := strings.Repeat("─", w)
+		pad := func(s string) string {
+			// pad to width
+			vis := len(s)
+			if vis < w {
+				return s + strings.Repeat(" ", w-vis)
+			}
+			return s
+		}
+
+		fmt.Printf("  ┌%s┐\n", border)
+		fmt.Printf("  │%s│\n", pad(""))
+		fmt.Printf("  │%s│\n", pad("  ⏰  "+message))
+		fmt.Printf("  │%s│\n", pad(""))
+		fmt.Printf("  │%s│\n", pad("  ─── Actions ───"))
+		fmt.Printf("  │%s│\n", pad(""))
+		fmt.Printf("  │%s│\n", pad("  d  dismiss"))
+		fmt.Printf("  │%s│\n", pad("  1  snooze 5m"))
+		fmt.Printf("  │%s│\n", pad("  2  snooze 10m"))
+		fmt.Printf("  │%s│\n", pad("  3  snooze 15m"))
+		fmt.Printf("  │%s│\n", pad("  s  snooze custom..."))
+		if origDur > 0 {
+			fmt.Printf("  │%s│\n", pad(fmt.Sprintf("  r  repeat (%s)", remind.FormatDuration(origDur))))
+		}
+		fmt.Printf("  │%s│\n", pad(""))
+		fmt.Printf("  └%s┘\n", border)
 		fmt.Print("\n  > ")
 
 		var choice string
@@ -83,8 +113,22 @@ var popupReminderCmd = &cobra.Command{
 			return spawnReminder(10*time.Minute, message)
 		case "3":
 			return spawnReminder(15*time.Minute, message)
+		case "s":
+			fmt.Print("  duration (e.g. 30m, 1h, 2h30m): ")
+			var input string
+			fmt.Scanln(&input)
+			d, err := time.ParseDuration(input)
+			if err != nil {
+				fmt.Printf("  invalid duration: %s\n", input)
+				return nil
+			}
+			return spawnReminder(d, message)
+		case "r":
+			if origDur > 0 {
+				return spawnReminder(origDur, message)
+			}
+			return nil
 		default:
-			// dismiss
 			return nil
 		}
 	},
@@ -97,7 +141,8 @@ func spawnReminder(duration time.Duration, message string) error {
 		return err
 	}
 
-	proc := exec.Command(self, "_fire", strconv.FormatInt(fireAt.Unix(), 10), message)
+	durSecs := strconv.FormatInt(int64(duration.Seconds()), 10)
+	proc := exec.Command(self, "_fire", strconv.FormatInt(fireAt.Unix(), 10), durSecs, message)
 	proc.SysProcAttr = sysProcAttr()
 	proc.Stdout = nil
 	proc.Stderr = nil
@@ -106,7 +151,7 @@ func spawnReminder(duration time.Duration, message string) error {
 		return err
 	}
 
-	id, err := remind.Add(proc.Process.Pid, message, fireAt)
+	id, err := remind.Add(proc.Process.Pid, message, fireAt, duration)
 	if err != nil {
 		return err
 	}

@@ -11,15 +11,16 @@ import (
 )
 
 var remindCmd = &cobra.Command{
-	Use:   "remind <duration> <message>",
+	Use:   "remind <duration|time> <message>",
 	Short: "Set a reminder that pops up in tmux",
-	Long:  "Set a timer. When it fires, a tmux popup shows the message.\nExamples: flow remind 30m \"check deployment\"\n          flow remind 1h30m \"standup\"",
+	Long:  "Set a timer or clock time. When it fires, a tmux popup shows the message.\nExamples: flow remind 30m \"check deployment\"\n          flow remind 1h30m \"standup\"\n          flow remind 3:30pm \"team sync\"\n          flow remind 15:04 \"deploy window\"",
 	Args:  cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		duration, err := time.ParseDuration(args[0])
+		fireAt, duration, err := remind.ParseTimeOrDuration(args[0])
 		if err != nil {
-			return fmt.Errorf("invalid duration %q: %w", args[0], err)
+			return err
 		}
+		_ = fireAt // spawnReminder computes fireAt from duration
 
 		message := strings.Join(args[1:], " ")
 

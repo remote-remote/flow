@@ -59,10 +59,11 @@ func WithLock(fn func() error) error {
 }
 
 type Reminder struct {
-	ID      int       `json:"id"`
-	PID     int       `json:"pid"`
-	Message string    `json:"message"`
-	FireAt  time.Time `json:"fire_at"`
+	ID       int           `json:"id"`
+	PID      int           `json:"pid"`
+	Message  string        `json:"message"`
+	FireAt   time.Time     `json:"fire_at"`
+	Duration time.Duration `json:"duration,omitempty"` // original duration, for repeat
 }
 
 func statePath() (string, error) {
@@ -108,7 +109,7 @@ func Save(reminders []Reminder) error {
 }
 
 // Add persists a new reminder and returns its ID.
-func Add(pid int, message string, fireAt time.Time) (int, error) {
+func Add(pid int, message string, fireAt time.Time, duration ...time.Duration) (int, error) {
 	lk, err := acquireLock()
 	if err != nil {
 		return 0, err
@@ -127,12 +128,16 @@ func Add(pid int, message string, fireAt time.Time) (int, error) {
 		}
 	}
 
-	reminders = append(reminders, Reminder{
+	r := Reminder{
 		ID:      id,
 		PID:     pid,
 		Message: message,
 		FireAt:  fireAt,
-	})
+	}
+	if len(duration) > 0 {
+		r.Duration = duration[0]
+	}
+	reminders = append(reminders, r)
 
 	return id, Save(reminders)
 }
@@ -245,6 +250,34 @@ func isProcessAlive(pid int) bool {
 	}
 	// Signal 0 checks if process exists without actually sending a signal
 	return proc.Signal(syscall.Signal(0)) == nil
+}
+
+// ParseTimeOrDuration parses either a duration ("30m", "1h30m") or a clock time
+// ("3:30pm", "15:30", "3pm"). Clock times resolve to today, or tomorrow if already past.
+func ParseTimeOrDuration(s string) (fireAt time.Time, duration time.Duration, err error) {
+	// Try as Go duration first
+	if d, err := time.ParseDuration(s); err == nil {
+		return time.Now().Add(d), d, nil
+	}
+
+	// Try clock time formats
+	now := time.Now()
+	formats := []string{"3:04pm", "3:04PM", "3pm", "3PM", "15:04"}
+	for _, f := range formats {
+		t, err := time.Parse(f, s)
+		if err != nil {
+			continue
+		}
+		// Build time for today
+		fireAt = time.Date(now.Year(), now.Month(), now.Day(),
+			t.Hour(), t.Minute(), 0, 0, now.Location())
+		if fireAt.Before(now) {
+			fireAt = fireAt.Add(24 * time.Hour)
+		}
+		return fireAt, fireAt.Sub(now), nil
+	}
+
+	return time.Time{}, 0, fmt.Errorf("invalid duration or time %q (e.g. 30m, 1h30m, 3:30pm, 15:04)", s)
 }
 
 // FormatDuration formats a duration for display (e.g. "25m", "1h30m").

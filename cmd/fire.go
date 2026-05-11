@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/remote-remote/flow/internal/remind"
+	"github.com/remote-remote/flow/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -47,7 +48,7 @@ var fireCmd = &cobra.Command{
 
 		// Fire tmux popup with duration info
 		popupCmd := fmt.Sprintf("%s _popup reminder %d %q", self, durSecs, message)
-		exec.Command("tmux", "display-popup", "-E", "-w", "50", "-h", "16", popupCmd).Run()
+		exec.Command("tmux", "display-popup", "-E", "-w", "56", "-h", "18", popupCmd).Run()
 
 		cleanupFiredReminder(message)
 
@@ -73,57 +74,15 @@ var popupReminderCmd = &cobra.Command{
 		origDur := time.Duration(durSecs) * time.Second
 		message := args[1]
 
-		// Box drawing popup
-		w := 46
-		border := strings.Repeat("─", w)
-		pad := func(s string) string {
-			// pad to width
-			vis := len(s)
-			if vis < w {
-				return s + strings.Repeat(" ", w-vis)
-			}
-			return s
+		result, err := tui.RunReminderPopup(message, origDur)
+		if err != nil {
+			return err
 		}
 
-		fmt.Printf("  ┌%s┐\n", border)
-		fmt.Printf("  │%s│\n", pad(""))
-		fmt.Printf("  │%s│\n", pad("  ⏰  "+message))
-		fmt.Printf("  │%s│\n", pad(""))
-		fmt.Printf("  │%s│\n", pad("  ─── Actions ───"))
-		fmt.Printf("  │%s│\n", pad(""))
-		fmt.Printf("  │%s│\n", pad("  d  dismiss"))
-		fmt.Printf("  │%s│\n", pad("  1  snooze 5m"))
-		fmt.Printf("  │%s│\n", pad("  2  snooze 10m"))
-		fmt.Printf("  │%s│\n", pad("  3  snooze 15m"))
-		fmt.Printf("  │%s│\n", pad("  s  snooze custom..."))
-		if origDur > 0 {
-			fmt.Printf("  │%s│\n", pad(fmt.Sprintf("  r  repeat (%s)", remind.FormatDuration(origDur))))
-		}
-		fmt.Printf("  │%s│\n", pad(""))
-		fmt.Printf("  └%s┘\n", border)
-		fmt.Print("\n  > ")
-
-		var choice string
-		fmt.Scanln(&choice)
-
-		switch choice {
-		case "1":
-			return spawnReminder(5*time.Minute, message)
-		case "2":
-			return spawnReminder(10*time.Minute, message)
-		case "3":
-			return spawnReminder(15*time.Minute, message)
-		case "s":
-			fmt.Print("  duration (e.g. 30m, 1h, 2h30m): ")
-			var input string
-			fmt.Scanln(&input)
-			d, err := time.ParseDuration(input)
-			if err != nil {
-				fmt.Printf("  invalid duration: %s\n", input)
-				return nil
-			}
-			return spawnReminder(d, message)
-		case "r":
+		switch result.Action {
+		case "snooze":
+			return spawnReminder(result.Snooze, message)
+		case "repeat":
 			if origDur > 0 {
 				return spawnReminder(origDur, message)
 			}

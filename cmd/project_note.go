@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var projectNoteNoOpen bool
+
 var projectNote = &cobra.Command{
 	Use:   "project [name...]",
 	Short: "Open a project note",
@@ -38,6 +40,10 @@ var projectNote = &cobra.Command{
 			return nil
 		}
 
-		return notes.OpenProject(cfg, name)
+		return notes.OpenProject(cfg, name, projectNoteNoOpen)
 	},
+}
+
+func init() {
+	projectNote.Flags().BoolVar(&projectNoteNoOpen, "no-open", false, noOpenUsage)
 }

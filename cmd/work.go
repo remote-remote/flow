@@ -53,7 +53,6 @@ var workCmd = &cobra.Command{
 			fmt.Println("Worktree is dirty — commit or stash to checkout the branch.")
 		}
 
-		return notes.OpenTask(cfg, issue)
+		return notes.OpenTask(cfg, issue, false)
 	},
 }
-

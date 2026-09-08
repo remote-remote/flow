@@ -24,9 +24,6 @@ type MenuResult struct {
 	// RemindResult is set when a reminder was created inline.
 	RemindResult *RemindResult
 
-	// QuickNoteTitle is set when the quick note flow completed inline.
-	QuickNoteTitle string
-
 	// ProjectName is set when a project was selected.
 	ProjectName string
 
@@ -88,7 +85,6 @@ func (m *rootModel) initList() {
 			item{title: "Task note", key: "note:task", desc: "Open a note for a Linear task"},
 			item{title: "Project note", key: "note:project", desc: "Open a project note"},
 			item{title: "Daily note", key: "note:daily", desc: "Open today's daily note"},
-			item{title: "Quick note", key: "note:quick", desc: "Create a quick titled note"},
 		})
 	}
 }
@@ -168,7 +164,6 @@ func (m rootModel) handleSelection() (tea.Model, tea.Cmd) {
 			item{title: "Task note", key: "note:task", desc: "Open a note for a Linear task"},
 			item{title: "Project note", key: "note:project", desc: "Open a project note"},
 			item{title: "Daily note", key: "note:daily", desc: "Open today's daily note"},
-			item{title: "Quick note", key: "note:quick", desc: "Create a quick titled note"},
 		})
 		return m, nil
 
@@ -177,9 +172,6 @@ func (m rootModel) handleSelection() (tea.Model, tea.Cmd) {
 
 	case "note:task":
 		return m.delegateToTaskPicker()
-
-	case "note:quick":
-		return m.delegateToQuickNote()
 
 	case "remind":
 		return m.delegateToRemind()
@@ -217,15 +209,6 @@ func (m rootModel) delegateToTaskPicker() (tea.Model, tea.Cmd) {
 	return m, sub.Init()
 }
 
-func (m rootModel) delegateToQuickNote() (tea.Model, tea.Cmd) {
-	sub := newQuickNoteModel()
-	sub.width = m.width
-	sub.height = m.height
-	m.phase = rootDelegated
-	m.delegate = sub
-	return m, sub.Init()
-}
-
 func (m rootModel) delegateToRemind() (tea.Model, tea.Cmd) {
 	sub := newRemindModel()
 	sub.setSize(m.width, m.height)
@@ -251,8 +234,6 @@ func (m *rootModel) isDelegateComplete() bool {
 		return sub.selected != nil || sub.err != nil
 	case remindModel:
 		return sub.result != nil || sub.err != nil
-	case quickNoteModel:
-		return sub.done || sub.err != nil
 	}
 	return false
 }
@@ -284,15 +265,6 @@ func (m rootModel) collectDelegateResult() (tea.Model, tea.Cmd) {
 			m.result = MenuResult{
 				Action:       "remind:done",
 				RemindResult: sub.result,
-			}
-		}
-	case quickNoteModel:
-		if sub.err != nil {
-			m.result = MenuResult{Err: sub.err}
-		} else if sub.done {
-			m.result = MenuResult{
-				Action:         "note:quick:done",
-				QuickNoteTitle: sub.title,
 			}
 		}
 	}

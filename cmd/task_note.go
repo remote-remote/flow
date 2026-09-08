@@ -17,6 +17,8 @@ import (
 
 var issueIDRe = regexp.MustCompile(`(?i)[A-Z]+-\d+`)
 
+var taskNoteNoOpen bool
+
 var taskNote = &cobra.Command{
 	Use:   "task [identifier]",
 	Short: "Open a task note for a Linear issue",
@@ -43,7 +45,7 @@ var taskNote = &cobra.Command{
 		if identifier != "" {
 			notePath := notes.TaskNotePathByID(cfg.VaultPath, identifier)
 			if _, err := os.Stat(notePath); err == nil {
-				return notes.OpenExistingTask(notePath)
+				return notes.OpenExistingTask(notePath, taskNoteNoOpen)
 			}
 		}
 
@@ -62,7 +64,7 @@ var taskNote = &cobra.Command{
 			return nil
 		}
 
-		return notes.OpenTask(cfg, issue)
+		return notes.OpenTask(cfg, issue, taskNoteNoOpen)
 	},
 }
 
@@ -73,4 +75,8 @@ func identifierFromBranch() string {
 	}
 	branch := strings.TrimSpace(string(out))
 	return strings.ToUpper(issueIDRe.FindString(branch))
+}
+
+func init() {
+	taskNote.Flags().BoolVar(&taskNoteNoOpen, "no-open", false, noOpenUsage)
 }

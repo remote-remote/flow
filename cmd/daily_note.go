@@ -9,6 +9,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var dailyNoteNoOpen bool
+
 var dailyNote = &cobra.Command{
 	Use:   "daily",
 	Short: "Open today's daily note",
@@ -21,6 +23,10 @@ var dailyNote = &cobra.Command{
 			}
 			return err
 		}
-		return notes.OpenDaily(cfg)
+		return notes.OpenDaily(cfg, dailyNoteNoOpen)
 	},
+}
+
+func init() {
+	dailyNote.Flags().BoolVar(&dailyNoteNoOpen, "no-open", false, noOpenUsage)
 }

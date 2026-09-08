@@ -21,16 +21,10 @@ var noteCmd = &cobra.Command{
 				if err != nil {
 					return err
 				}
-				return notes.OpenTask(cfg, issue)
+				return notes.OpenTask(cfg, issue, false)
 			}
 		case "note:daily":
 			return dailyNote.RunE(cmd, nil)
-		case "note:quick:done":
-			cfg, err := config.Load()
-			if err != nil {
-				return err
-			}
-			return notes.OpenQuick(cfg, result.QuickNoteTitle)
 		case "note:project":
 			return projectNote.RunE(cmd, nil)
 		}
@@ -42,6 +36,5 @@ var noteCmd = &cobra.Command{
 func init() {
 	noteCmd.AddCommand(taskNote)
 	noteCmd.AddCommand(dailyNote)
-	noteCmd.AddCommand(quickNote)
 	noteCmd.AddCommand(projectNote)
 }

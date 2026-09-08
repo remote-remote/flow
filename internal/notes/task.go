@@ -3,55 +3,37 @@ package notes
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
-	"time"
 
 	"github.com/remote-remote/flow/internal/config"
 	"github.com/remote-remote/flow/internal/linear"
 )
 
 // OpenTask opens or creates a task note for the given Linear issue, cross-links it
-// to today's daily note, and opens it in $EDITOR.
-func OpenTask(cfg *config.Config, issue *linear.Issue) error {
+// to today's daily note, and hands it to the caller.
+func OpenTask(cfg *config.Config, issue *linear.Issue, noOpen bool) error {
 	taskPath := TaskNotePath(cfg.VaultPath, issue)
 
-	// Create task note if it doesn't exist
-	if _, err := os.Stat(taskPath); os.IsNotExist(err) {
-		if err := os.MkdirAll(filepath.Dir(taskPath), 0o755); err != nil {
-			return err
-		}
-		content := renderTaskTemplate(issue)
-		if err := os.WriteFile(taskPath, []byte(content), 0o644); err != nil {
-			return err
-		}
+	if err := createFromTemplate(cfg.VaultPath, taskPath, "task", taskVars(issue)); err != nil {
+		return err
 	}
 
-	// Ensure project note exists if issue has a project
 	if issue.Project != nil {
-		projPath := ProjectNotePath(cfg.VaultPath, issue.Project.Name)
-		if _, err := os.Stat(projPath); os.IsNotExist(err) {
-			if err := os.MkdirAll(filepath.Dir(projPath), 0o755); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: could not create project note: %v\n", err)
-			} else {
-				content := renderProjectTemplate(issue.Project.Name)
-				os.WriteFile(projPath, []byte(content), 0o644)
-			}
+		if err := ensureProject(cfg.VaultPath, issue.Project.Name); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not create project note: %v\n", err)
 		}
 	}
 
-	// Cross-link to today's daily note
 	if err := crossLinkToDaily(cfg, issue); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not cross-link to daily note: %v\n", err)
 	}
 
-	return openInEditor(taskPath)
+	return deliver(taskPath, noOpen)
 }
 
 // OpenExistingTask opens a task note that already exists on disk.
-func OpenExistingTask(path string) error {
-	return openInEditor(path)
+func OpenExistingTask(path string, noOpen bool) error {
+	return deliver(path, noOpen)
 }
 
 // TaskNotePath returns the path for a task note.
@@ -94,85 +76,21 @@ func taskWikilink(issue *linear.Issue) string {
 	return fmt.Sprintf("[[Tasks/%s|%s]]", issue.Identifier, label)
 }
 
-func renderTaskTemplate(issue *linear.Issue) string {
+func taskVars(issue *linear.Issue) map[string]string {
 	project := ""
 	if issue.Project != nil {
 		project = issue.Project.Name
 	}
-	return fmt.Sprintf(`---
-title: "%s"
-linear_id: %s
-linear_url: %s
-status: %s
-project: "%s"
-tags: [task]
----
-# %s: %s
-
-## Notes
-
-## Log
-`, issue.Title, issue.Identifier, issue.URL, issue.State.Name,
-		project, issue.Identifier, issue.Title)
+	return map[string]string{
+		"title":      issue.Title,
+		"linear_id":  issue.Identifier,
+		"linear_url": issue.URL,
+		"status":     issue.State.Name,
+		"project":    project,
+	}
 }
 
 func crossLinkToDaily(cfg *config.Config, issue *linear.Issue) error {
-	now := time.Now()
-	dailyPath, err := config.DailyNotePath(cfg.VaultPath, now)
-	if err != nil {
-		return err
-	}
-
-	// Create daily note if it doesn't exist
-	if _, err := os.Stat(dailyPath); os.IsNotExist(err) {
-		if err := os.MkdirAll(filepath.Dir(dailyPath), 0o755); err != nil {
-			return err
-		}
-		content := RenderDailyTemplate(now)
-		if err := os.WriteFile(dailyPath, []byte(content), 0o644); err != nil {
-			return err
-		}
-	}
-
-	data, err := os.ReadFile(dailyPath)
-	if err != nil {
-		return err
-	}
-
 	wikilink := taskWikilink(issue)
-
-	// Don't add duplicate links
-	if strings.Contains(string(data), wikilink) {
-		return nil
-	}
-
-	// Find ## Tasks section and append the wikilink
-	content := string(data)
-	tasksIdx := strings.Index(content, "## Tasks")
-	if tasksIdx == -1 {
-		content += "\n## Tasks\n- " + wikilink + "\n"
-	} else {
-		afterTasks := tasksIdx + len("## Tasks")
-		nextLine := strings.Index(content[afterTasks:], "\n")
-		if nextLine == -1 {
-			content += "\n- " + wikilink + "\n"
-		} else {
-			insertAt := afterTasks + nextLine + 1
-			content = content[:insertAt] + "- " + wikilink + "\n" + content[insertAt:]
-		}
-	}
-
-	return os.WriteFile(dailyPath, []byte(content), 0o644)
-}
-
-func openInEditor(path string) error {
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		editor = "vim"
-	}
-	cmd := exec.Command(editor, path)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return appendToDaily(cfg, "## Tasks", "- "+wikilink, wikilink)
 }

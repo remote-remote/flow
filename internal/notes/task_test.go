@@ -45,7 +45,8 @@ func TestCrossLinkToDaily(t *testing.T) {
 	now := time.Now()
 	dailyPath, _ := config.DailyNotePath(vault, now)
 	os.MkdirAll(filepath.Dir(dailyPath), 0o755)
-	os.WriteFile(dailyPath, []byte(RenderDailyTemplate(now)), 0o644)
+	tmpl, _ := RenderDailyTemplate(vault, now)
+	os.WriteFile(dailyPath, []byte(tmpl), 0o644)
 
 	// Cross-link
 	if err := crossLinkToDaily(cfg, issue); err != nil {
@@ -78,7 +79,7 @@ func TestRenderTaskTemplate(t *testing.T) {
 		State:      linear.IssueState{Name: "Todo"},
 	}
 
-	got := renderTaskTemplate(issue)
+	got, _ := render(t.TempDir(), "task", taskVars(issue))
 	checks := []string{
 		`title: "Build the widget"`,
 		"linear_id: ENG-99",

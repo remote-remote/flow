@@ -49,11 +49,11 @@ var rootCommand = &cobra.Command{
 				if result.WorkResult.Dirty {
 					fmt.Println("Worktree is dirty — commit or stash to checkout the branch.")
 				}
-				return notes.OpenTask(cfg, result.WorkResult.Issue)
+				return notes.OpenTask(cfg, result.WorkResult.Issue, false)
 			}
 		case "note:task:done":
 			if issue, ok := result.Issue.(*linear.Issue); ok {
-				return notes.OpenTask(cfg, issue)
+				return notes.OpenTask(cfg, issue, false)
 			}
 		case "remind:done":
 			if result.RemindResult != nil {
@@ -67,8 +67,6 @@ var rootCommand = &cobra.Command{
 			tuiSelection = "note:daily"
 		case "note:project":
 			tuiSelection = "note:project"
-		case "note:quick:done":
-			return notes.OpenQuick(cfg, result.QuickNoteTitle)
 		}
 
 		return nil
@@ -101,4 +99,6 @@ func init() {
 	rootCommand.AddCommand(remindCmd)
 	rootCommand.AddCommand(fireCmd)
 	rootCommand.AddCommand(popupCmd)
+	rootCommand.AddCommand(investigateCmd)
+	rootCommand.AddCommand(projectCmd)
 }

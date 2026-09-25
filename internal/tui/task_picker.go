@@ -28,14 +28,13 @@ type issueDetailMsg struct {
 }
 
 type taskPickerModel struct {
-	phase      taskPhase
-	spinner    spinner.Model
-	list       list.Model
-	selected   *linear.Issue
-	identifier string // set when fetching a known identifier directly
-	err        error
-	width      int
-	height     int
+	phase    taskPhase
+	spinner  spinner.Model
+	list     list.Model
+	selected *linear.Issue
+	err      error
+	width    int
+	height   int
 }
 
 // RunTaskPicker shows a spinner while fetching assigned issues, lets user pick,
@@ -45,29 +44,6 @@ func RunTaskPicker() (*linear.Issue, error) {
 	inner := taskPickerModel{
 		phase:   taskLoading,
 		spinner: s,
-	}
-
-	p := tea.NewProgram(standaloneModel{inner: inner})
-	finalModel, err := p.Run()
-	if err != nil {
-		return nil, err
-	}
-
-	fm := finalModel.(standaloneModel).inner.(taskPickerModel)
-	if fm.err != nil {
-		return nil, fm.err
-	}
-	return fm.selected, nil
-}
-
-// RunTaskPickerForIdentifier shows a spinner while fetching a specific issue.
-// Keeps TUI up during the fetch so there's no flash.
-func RunTaskPickerForIdentifier(identifier string) (*linear.Issue, error) {
-	s := spinner.New(spinner.WithSpinner(spinner.MiniDot))
-	inner := taskPickerModel{
-		phase:      taskFetchingDetails,
-		spinner:    s,
-		identifier: identifier,
 	}
 
 	p := tea.NewProgram(standaloneModel{inner: inner})
@@ -94,12 +70,6 @@ func fetchIssueDetail(identifier string, project *linear.IssueProject) tea.Cmd {
 }
 
 func (m taskPickerModel) Init() tea.Cmd {
-	if m.identifier != "" {
-		return tea.Batch(
-			m.spinner.Tick,
-			fetchIssueDetail(m.identifier, nil),
-		)
-	}
 	return tea.Batch(
 		m.spinner.Tick,
 		func() tea.Msg {

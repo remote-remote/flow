@@ -19,6 +19,9 @@ var issueIDRe = regexp.MustCompile(`(?i)[A-Z]+-\d+`)
 
 var taskNoteNoOpen bool
 
+// issueByIdentifier is a seam so tests can run without the Linear CLI.
+var issueByIdentifier = linear.IssueByIdentifier
+
 var taskNote = &cobra.Command{
 	Use:   "task [identifier]",
 	Short: "Open a task note for a Linear issue",
@@ -51,8 +54,9 @@ var taskNote = &cobra.Command{
 
 		var issue *linear.Issue
 
+		// A known identifier needs no picker, so --no-open works without a TTY.
 		if identifier != "" {
-			issue, err = tui.RunTaskPickerForIdentifier(identifier)
+			issue, err = issueByIdentifier(identifier)
 		} else {
 			issue, err = tui.RunTaskPicker()
 		}
